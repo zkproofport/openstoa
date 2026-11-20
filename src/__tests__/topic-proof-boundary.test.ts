@@ -1,11 +1,13 @@
 import {coinbaseIssuerInputs,countryIssuerInputs,oidcIssuerInputs,jwksFetch,encodedBool,OIDC_AUDIENCES} from './fixtures/trusted-proof';
 import {createHash} from 'node:crypto';
-import {clearOidcKeyCache,COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT} from '@zkproofport-app/core';
+import {clearOidcKeyCache} from '@zkproofport-app/core';
 /** Edge matrix: malformed/empty/oversized hex; invalid verifier and RPC; cross-account scope;
  * country predicate/provider; guest/member/personal/invite refusal; cache isolation;
  * OIDC v2 nonce binding: a device-flow (mode 0) proof needs no request; an app (mode 1)
  * proof joins only with the request a proof-only poll kept for it, is refused without
  * one, and is refused when the kept request is for another request id.
+ * Wallet proofs (Coinbase KYC / Country) carry the scope as keccak256(scope) mod p and
+ * OpenStoa's OPRF domain; another account's scope or another domain is refused.
  * No live forged requests: route tests execute locally with DB/RPC/Redis isolated. */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
@@ -25,7 +27,7 @@ import { POST as inviteJoin } from '@/app/api/topics/join/[inviteCode]/route';
 const id='12345678-1234-4234-8234-123456789abc';
 const field=(n:number)=>'0x'+n.toString(16).padStart(64,'0');
 // A Coinbase KYC v2 proof over `scope`, or with `country` a Coinbase Country v2 inclusion proof over that list.
-function inputs(scope:string, country?:string[]) { if(country)return countryIssuerInputs({countries:country,scope});const p=coinbaseIssuerInputs();Buffer.from(computeScopeHash(scope).slice(2),'hex').forEach((n,i)=>p[COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT.SCOPE_START+i]=field(n));return p; }
+function inputs(scope:string, country?:string[]) { return country?countryIssuerInputs({countries:country,scope}):coinbaseIssuerInputs(undefined,{scope}); }
 async function join(body:unknown={}) {return POST(new NextRequest('http://localhost/api/topics/'+id+'/join',{method:'POST',body:JSON.stringify(body)}),{params:Promise.resolve({topicId:id})});}
 beforeEach(()=>{clearOidcKeyCache();vi.stubGlobal('fetch',vi.fn(jwksFetch()));vi.stubEnv('APP_ENV','staging');state.session={userId:'alice'};state.topic={id,visibility:'public',proofType:'kyc'};state.member=null;state.values.mockReset().mockImplementation(()=>({returning:async()=>[state.topic]}));state.update.mockReset();state.verify.mockReset().mockResolvedValue(true);state.cache.clear();});
 describe('topic proof boundary',()=>{
@@ -33,6 +35,8 @@ describe('topic proof boundary',()=>{
  it('does not authorize forged nonempty bytes with a matching community scope',async()=>{state.verify.mockResolvedValue(false);expect((await join({proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE)})).status).toBe(400);expect(state.values).not.toHaveBeenCalled();expect(state.cache.size).toBe(0);});
  it('verifies a user-bound proof before joining, without equating Google and KYC nullifiers',async()=>{expect((await join({proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE+':topic:alice')})).status).toBe(201);expect(state.verify).toHaveBeenCalledOnce();expect(state.values).toHaveBeenCalledOnce();});
  it('rejects a different session scope',async()=>{expect((await join({proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE+':topic:bob')})).status).toBe(400);expect(state.values).not.toHaveBeenCalled();});
+ it('rejects a KYC proof made for another OPRF domain, before any contract call',async()=>{expect((await join({proof:'0xab',publicInputs:coinbaseIssuerInputs(undefined,{scope:COMMUNITY_SCOPE+':topic:alice',oprfDomain:'openstoa.xyz'})})).status).toBe(400);expect(state.verify).not.toHaveBeenCalled();expect(state.values).not.toHaveBeenCalled();expect(state.cache.size).toBe(0);});
+ it('rejects a KYC proof whose scope is the raw keccak256 (not reduced mod p)',async()=>{const p=coinbaseIssuerInputs(undefined,{scope:COMMUNITY_SCOPE+':topic:alice'});p[130]=computeScopeHash(COMMUNITY_SCOPE+':topic:alice');expect((await join({proof:'0xab',publicInputs:p})).status).toBe(400);expect(state.values).not.toHaveBeenCalled();});
  it.each(['private','secret','future'])('refuses %s before any verification-cache write',async(visibility)=>{state.topic.visibility=visibility;expect((await join({proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE)})).status).toBe(403);expect(state.cache.size).toBe(0);expect(state.verify).not.toHaveBeenCalled();});
  it('fails closed on invalid cryptographic proof',async()=>{state.verify.mockResolvedValue(false);expect((await join({proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE+':topic:alice')})).status).toBe(400);expect(state.cache.size).toBe(0);expect(state.values).not.toHaveBeenCalled();});
  it('fails closed on RPC failure',async()=>{state.verify.mockRejectedValue(new Error('RPC secret'));expect((await join({proof:'0xab',publicInputs:inputs(COMMUNITY_SCOPE+':topic:alice')})).status).toBe(400);expect(state.values).not.toHaveBeenCalled();});

@@ -3,6 +3,7 @@ import { ProofportSDK } from '@zkproofport-app/sdk';
 import type { CircuitType, RelayProofResult } from '@zkproofport-app/sdk';
 import { countryListError, OIDC_MAX_SCOPE_BYTES, type CountryCondition } from '@zkproofport-app/core';
 import { rememberRelayRequest } from './oidcRequestContext';
+import { isOprfCircuit, oprfSettingsFor } from './proof';
 
 function createSDK(): ProofportSDK {
   const relayUrl = process.env.RELAY_URL;
@@ -120,8 +121,13 @@ export async function createRelayProofRequest(
     ? countryConditionFor(options.countryList, options.isIncluded)
     : undefined;
   const dappIcon = options.dappIcon ?? dappIconFor(process.env.APP_ENV);
+  // A wallet credential's nullifier is keyed by the OPRF domain beside the
+  // scope. On a server the SDK never infers it, so OpenStoa names its own
+  // (per APP_ENV; an unknown one throws) and verifies the result against it.
+  const oprfDomain = isOprfCircuit(circuit) ? oprfSettingsFor(process.env.APP_ENV).domain : undefined;
   const sdk = createSDK();
   const inputs: Record<string, unknown> = { scope };
+  if (oprfDomain !== undefined) inputs.oprfDomain = oprfDomain;
   if (countryCondition) {
     inputs.countryList = [...countryCondition.countryList];
     inputs.isIncluded = countryCondition.isIncluded;
@@ -142,10 +148,14 @@ export async function createRelayProofRequest(
   if (circuit === 'oidc_domain_attestation') {
     await rememberRelayRequest(relay.requestId, { scope, circuit });
   }
-  // A Country proof's list is the prover's choice; its result is verified
-  // against the list asked for here (verifyProofFromRelay). Same rule.
-  if (countryCondition) {
-    await rememberRelayRequest(relay.requestId, { scope, circuit, countryCondition });
+  // A wallet credential proof carries this request's signal_hash, OPRF domain
+  // and scope, and a Country proof the list asked for here (the prover's
+  // choice otherwise); its result is verified against this record
+  // (verifyProofFromRelay). Same rule.
+  if (oprfDomain !== undefined) {
+    await rememberRelayRequest(relay.requestId, {
+      scope, circuit, oprfDomain, ...(countryCondition ? { countryCondition } : {}),
+    });
   }
   return { requestId: relay.requestId, deepLink: relay.deepLink };
 }

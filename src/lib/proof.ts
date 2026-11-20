@@ -10,11 +10,19 @@ import {
   OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT,
   OIDC_PUBLIC_INPUT_COUNT,
   readCountryCondition,
+  readOprfPublicInputs,
+  reduceOprfName,
   type CountryCondition,
   type OidcRequestContext,
+  type OprfEnvironment,
+  type ProofRequestContext,
 } from '@zkproofport-app/core';
 import type { RelayProofResult } from '@zkproofport-app/sdk';
 import { relayRequestFor } from './oidcRequestContext';
+import { isOprfCircuit, scopeFieldFor, scopeFieldMatches } from './proofScopeField';
+import { oprfSettingsFor } from './oprfDomain';
+
+export { OPRF_SETTINGS, oprfSettingsFor } from './oprfDomain';
 
 export const COMMUNITY_SCOPE = 'zkproofport-community';
 
@@ -59,12 +67,16 @@ export const VERIFICATION_CHAINS: Record<string, Record<VerifiableCircuit, numbe
   local: TESTNET_CHAINS,
 };
 
+export { isOprfCircuit } from './proofScopeField';
+
 // Exact public-input count per circuit, read from core. Anything else is not
 // that circuit's proof, and is refused before an RPC call.
 export const PUBLIC_INPUT_COUNTS: Record<VerifiableCircuit, number> = {
-  // Coinbase KYC v2 (193). A v1 proof (128) is refused here and by core.
+  // Coinbase KYC v2 with the OPRF nullifier (133). Earlier shapes (68, 128,
+  // 193) are refused here and by core.
   coinbase_attestation: COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT,
-  // Coinbase Country v2 (215). A v1 proof (150) is refused here and by core.
+  // Coinbase Country v2 with the OPRF nullifier (155). Earlier shapes (90,
+  // 150, 215) are refused here and by core.
   coinbase_country_attestation: COINBASE_COUNTRY_PUBLIC_INPUT_COUNT,
   // OIDC v2 (214). A v1 proof (148) is refused here and by core.
   oidc_domain_attestation: OIDC_PUBLIC_INPUT_COUNT,
@@ -103,6 +115,14 @@ export interface ClaimedVerifier {
  * asked the relay for). The list is a public input the prover chooses and the
  * wallet's signature does not cover it, so a Country proof is refused without
  * one; core compares the two as sets of codes.
+ *
+ * A wallet credential proof (Coinbase KYC / Country) carries an OPRF
+ * nullifier. Its key hash is always checked against the key core pins for this
+ * environment (OPRF_SETTINGS). `walletRequest` is the relay request it answers
+ * (`{ scope, requestId, oprfDomain }`): when given, core also checks the
+ * signal_hash, OPRF domain and scope against it. Without it (a proof submitted
+ * to a topic gate later, or one from the AI prover) the domain is compared
+ * here with OpenStoa's own; the caller compares the scope.
  */
 export async function verifyTrustedTopicProof(
   circuit: string,
@@ -112,6 +132,7 @@ export async function verifyTrustedTopicProof(
   oidcRequest?: OidcRequestContext,
   signerVariant?: string,
   countryCondition?: CountryCondition,
+  walletRequest?: ProofRequestContext,
 ): Promise<{ valid: boolean; error?: string }> {
   const environment = process.env.APP_ENV;
   if (!environment || !Object.hasOwn(VERIFICATION_CHAINS, environment)) {
@@ -146,10 +167,20 @@ export async function verifyTrustedTopicProof(
   if (known === 'coinbase_country_attestation' && countryCondition === undefined) {
     return { valid: false, error: 'A Coinbase Country proof needs the country list it was asked for; none is known here' };
   }
+  let oprf: { domain: string; environment: OprfEnvironment } | undefined;
+  if (isOprfCircuit(known)) {
+    oprf = oprfSettingsFor(environment);
+    if (walletRequest === undefined) {
+      const domainError = oprfDomainError(publicInputs, known, oprf.domain);
+      if (domainError) return { valid: false, error: domainError };
+    } else if (walletRequest.oprfDomain !== oprf.domain) {
+      return { valid: false, error: `The request names OPRF domain '${walletRequest.oprfDomain}', not OpenStoa's '${oprf.domain}'` };
+    }
+  }
   const rpcUrl = RPC_ENDPOINTS[chainId];
   if (!rpcUrl) return { valid: false, error: `No RPC endpoint for chain ${chainId}` };
   try {
-    return await verifyProofOnChain(
+    const verdict = await verifyProofOnChain(
       known,
       { proofHex: proof, publicInputsHex: publicInputs, numPublicInputs: publicInputs.length },
       new ethers.JsonRpcProvider(rpcUrl),
@@ -158,9 +189,13 @@ export async function verifyTrustedTopicProof(
       {
         ...(known === 'oidc_domain_attestation' && oidcRequest !== undefined ? { request: oidcRequest } : {}),
         ...(known === 'coinbase_country_attestation' ? { countryCondition } : {}),
+        ...(oprf ? { oprfEnvironment: oprf.environment } : {}),
+        ...(oprf && walletRequest !== undefined ? { request: walletRequest } : {}),
         ...(signerVariant !== undefined ? { signerVariant } : {}),
       },
     );
+    // Only the verdict: which contract accepted is core's detail, not OpenStoa's answer.
+    return verdict.valid ? { valid: true } : { valid: false, error: verdict.error };
   } catch {
     return { valid: false, error: 'Proof verification failed' };
   }
@@ -178,15 +213,17 @@ export async function verifyTrustedTopicProof(
  * record for another circuit, refuses the proof. `request` in the answer is
  * that request, for a caller that keeps the proof for later verification.
  *
- * A Coinbase Country result is verified against the country list and
- * direction OpenStoa asked the relay for, recorded the same way; without that
- * record the proof's list (the prover's choice) cannot be judged, so it is
- * refused.
+ * A wallet credential result (Coinbase KYC / Country) is verified against the
+ * request recorded the same way: its scope, the polled requestId and the OPRF
+ * domain OpenStoa named (signal_hash, domain and scope all checked by core),
+ * and for Country the list and direction asked for. Without that record the
+ * proof cannot be placed, so it is refused. `request` in the answer is the
+ * request a valid proof was verified against.
  */
 export async function verifyProofFromRelay(
   result: RelayProofResult,
   requestId: string,
-): Promise<{ valid: boolean; error?: string; request?: OidcRequestContext }> {
+): Promise<{ valid: boolean; error?: string; request?: ProofRequestContext }> {
   if (!result.circuit || !result.proof || !result.publicInputs) {
     return { valid: false, error: 'Incomplete proof result' };
   }
@@ -196,7 +233,7 @@ export async function verifyProofFromRelay(
   const claimed = { verifierAddress: result.verifierAddress, chainId: result.chainId };
   // Which package made the proof; passed through unchanged, never guessed.
   const signerVariant = result.signerVariant ?? undefined;
-  if (result.circuit !== 'oidc_domain_attestation' && result.circuit !== 'coinbase_country_attestation') {
+  if (result.circuit !== 'oidc_domain_attestation' && !isOprfCircuit(result.circuit)) {
     return verifyTrustedTopicProof(result.circuit, result.proof, inputs, claimed, undefined, signerVariant);
   }
   const recorded = await relayRequestFor(requestId);
@@ -206,14 +243,21 @@ export async function verifyProofFromRelay(
   if (recorded.circuit !== result.circuit) {
     return { valid: false, error: `Relay request ${requestId} was created for ${recorded.circuit}, not ${result.circuit}` };
   }
-  if (result.circuit === 'coinbase_country_attestation') {
-    if (!recorded.countryCondition) {
-      return { valid: false, error: `Relay request ${requestId} has no recorded country list` };
-    }
-    return verifyTrustedTopicProof(result.circuit, result.proof, inputs, claimed, undefined, signerVariant, recorded.countryCondition);
+  if (result.circuit === 'oidc_domain_attestation') {
+    const request = { scope: recorded.scope, requestId };
+    const verification = await verifyTrustedTopicProof(result.circuit, result.proof, inputs, claimed, request, signerVariant);
+    return verification.valid ? { ...verification, request } : verification;
   }
-  const request = { scope: recorded.scope, requestId };
-  const verification = await verifyTrustedTopicProof(result.circuit, result.proof, inputs, claimed, request, signerVariant);
+  if (recorded.oprfDomain === undefined) {
+    return { valid: false, error: `Relay request ${requestId} has no recorded OPRF domain` };
+  }
+  if (result.circuit === 'coinbase_country_attestation' && !recorded.countryCondition) {
+    return { valid: false, error: `Relay request ${requestId} has no recorded country list` };
+  }
+  const request: ProofRequestContext = { scope: recorded.scope, requestId, oprfDomain: recorded.oprfDomain };
+  const verification = await verifyTrustedTopicProof(
+    result.circuit, result.proof, inputs, claimed, undefined, signerVariant, recorded.countryCondition, request,
+  );
   return verification.valid ? { ...verification, request } : verification;
 }
 
@@ -243,6 +287,34 @@ export function extractScope(publicInputs: string[], circuit: string): string {
 
 export function computeScopeHash(scopeString: string): string {
   return ethers.keccak256(ethers.toUtf8Bytes(scopeString));
+}
+
+/**
+ * The value a `circuit` proof for `scopeString` carries as its scope, in the
+ * form extractScope returns: keccak256(utf8(scope)) mod p for a wallet
+ * credential (an OPRF name; a raw keccak256 is at or above p for most
+ * strings), keccak256(utf8(scope)) for OIDC.
+ */
+export function expectedScopeField(scopeString: string, circuit: string): string {
+  return scopeFieldFor(scopeString, requireSupportedCircuit(circuit, 'scope'));
+}
+
+/** Whether a proof's scope (as extractScope returns it) is `scopeString`'s, for `circuit`. */
+export function proofScopeMatches(publicInputs: string[], circuit: string, scopeString: string): boolean {
+  return scopeFieldMatches(extractScope(publicInputs, circuit), scopeString, requireSupportedCircuit(circuit, 'scope'));
+}
+
+/**
+ * Why a wallet credential proof's OPRF domain is not keccak256(utf8(domain))
+ * mod p, or null when it is. Read by core (strict count, field elements).
+ */
+export function oprfDomainError(publicInputs: readonly string[], circuit: string, domain: string): string | null {
+  let read;
+  try { read = readOprfPublicInputs(circuit, publicInputs); }
+  catch (error) { return error instanceof Error ? error.message : String(error); }
+  return BigInt(read.domain) === BigInt(reduceOprfName(domain))
+    ? null
+    : `The proof's OPRF domain is not '${domain}'; it was made for another service`;
 }
 
 /**

@@ -1,15 +1,16 @@
 /**
- * OpenStoa on @zkproofport-app/core 0.4.0-beta.1: Coinbase KYC v2 and the
- * Android signer packages.
+ * OpenStoa on @zkproofport-app/core 0.4.0-beta.9: Coinbase KYC v2 (OPRF
+ * nullifier) and the Android signer packages.
  *
  * Edge matrix (each row maps to a test below):
- *  - Coinbase KYC count: 193 accepted; v1's 128 refused before any network
- *    call; 192 / 194 refused.
+ *  - Coinbase KYC count: 133 accepted; earlier shapes 68 / 128 / 193 refused
+ *    before any network call; 132 / 134 refused.
  *  - attested_at (core): now accepted; 16 minutes old and 6 minutes ahead
  *    refused before the contract call.
  *  - signerVariant: absent -> the standard pinned verifier; `android` and
  *    `android_factory` -> that package's pinned verifier, for Coinbase KYC and
- *    OIDC, in staging (Base Sepolia) and production (Base mainnet); unknown
+ *    OIDC, in staging (Base Sepolia); production (Base mainnet) refused while
+ *    core holds those verifiers as awaiting a redeploy; unknown
  *    ('ios', '', '__proto__'), non-string and a claim contradicted by the
  *    proof's length refused without a call; an Android-length proof with no
  *    claim refused. (Coinbase Country's variants: coinbase-country-v2.test.ts.)
@@ -26,7 +27,7 @@ import {
   getPinnedVerifier,
   COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT,
 } from '@zkproofport-app/core';
-import { coinbaseIssuerInputs, oidcIssuerInputs, jwksFetch, encodedBool, proofField } from './fixtures/trusted-proof';
+import { coinbaseIssuerInputs, oidcIssuerInputs, jwksFetch, encodedBool, proofField, STAGING_OPRF_DOMAIN } from './fixtures/trusted-proof';
 
 const state = vi.hoisted(() => ({
   calls: [] as Array<{ to: string }>,
@@ -43,7 +44,8 @@ vi.mock('ethers', async () => {
   }
   return { ...actual, ethers: { ...actual.ethers, JsonRpcProvider: FakeProvider } };
 });
-vi.mock('@/lib/redis', () => ({ redis: { get: async () => null, set: async () => 'OK' } }));
+const store = vi.hoisted(() => new Map<string, string>());
+vi.mock('@/lib/redis', () => ({ redis: { get: async (key: string) => store.get(key) ?? null, set: async () => 'OK' } }));
 const cache = vi.hoisted(() => ({ saved: [] as unknown[] }));
 vi.mock('@/lib/verification-cache', () => ({
   circuitToCacheType: (circuit: string) => circuit,
@@ -51,7 +53,7 @@ vi.mock('@/lib/verification-cache', () => ({
   saveVerificationCache: async (...args: unknown[]) => { cache.saved.push(args); },
 }));
 
-import { verifyTrustedTopicProof, verifyProofFromRelay, computeScopeHash } from '@/lib/proof';
+import { verifyTrustedTopicProof, verifyProofFromRelay } from '@/lib/proof';
 import { requireTopicProof, topicProofScope } from '@/lib/topic-proof';
 
 /** A proof of the length a 2^n EVM UltraHonk proof has: 32 * (82 + 12n) bytes. */
@@ -70,14 +72,14 @@ beforeEach(() => {
 });
 
 describe('Coinbase KYC v2 count and attested_at', () => {
-  it('a 193-input proof with a fresh attested_at reaches the v2 verifier', async () => {
+  it('a 133-input proof with a fresh attested_at reaches the v2 verifier', async () => {
     expect(await verifyTrustedTopicProof('coinbase_attestation', STANDARD_KYC, coinbaseIssuerInputs())).toEqual({ valid: true });
-    expect(state.calls.map(c => c.to)).toEqual(['0x1885aa2283db21ad0fc63a2df98efe92f31908e6']);
+    expect(state.calls.map(c => c.to)).toEqual(['0xe78fcdc7562ce3afceadaf29f4b8b96dc997c01a']);
   });
 
-  it.each([128, 192, 194])('%i inputs are refused before any network call', async (n) => {
+  it.each([68, 128, 193, 132, 134])('%i inputs are refused before any network call', async (n) => {
     const result = await verifyTrustedTopicProof('coinbase_attestation', STANDARD_KYC, Array(n).fill(proofField(0)));
-    expect(result).toEqual({ valid: false, error: 'Expected 193 32-byte public inputs for coinbase_attestation' });
+    expect(result).toEqual({ valid: false, error: 'Expected 133 32-byte public inputs for coinbase_attestation' });
     expect(state.calls).toHaveLength(0);
   });
 
@@ -95,13 +97,13 @@ describe('Coinbase KYC v2 count and attested_at', () => {
 });
 
 describe('signerVariant selects among core\'s pinned verifiers', () => {
-  const rows = (['staging', 'production'] as const).flatMap(env =>
+  const rows = (['staging'] as const).flatMap(env =>
     (['coinbase_attestation', 'oidc_domain_attestation'] as const).flatMap(circuit =>
       (['android', 'android_factory'] as const).map(variant => [env, circuit, variant] as const)));
 
   it.each(rows)('%s / %s / %s verifies on that package\'s pinned contract', async (env, circuit, variant) => {
     vi.stubEnv('APP_ENV', env);
-    const chainId = env === 'production' ? 8453 : 84532;
+    const chainId = 84532;
     const inputs = circuit === 'coinbase_attestation' ? coinbaseIssuerInputs() : oidcIssuerInputs();
     const result = await verifyTrustedTopicProof(circuit, ANDROID, inputs, undefined, undefined, variant);
     expect(result).toEqual({ valid: true });
@@ -109,22 +111,19 @@ describe('signerVariant selects among core\'s pinned verifiers', () => {
     expect(state.calls[0].to).not.toBe(getPinnedVerifier(circuit, chainId).address);
   });
 
-  it('production Coinbase KYC android verifiers are the Base mainnet deployments', async () => {
+  // The mainnet deployments were built from keys that are no longer these
+  // circuits'; core holds them as awaiting a redeploy and calls none of them.
+  it.each([
+    ['coinbase_attestation', ANDROID, 'android'],
+    ['coinbase_attestation', ANDROID, 'android_factory'],
+    ['coinbase_attestation', STANDARD_KYC, undefined],
+    ['oidc_domain_attestation', proofOfLog(20), undefined],
+  ] as const)('production %s (%s bytes, %s) is refused with no contract call', async (circuit, proof, variant) => {
     vi.stubEnv('APP_ENV', 'production');
-    await verifyTrustedTopicProof('coinbase_attestation', ANDROID, coinbaseIssuerInputs(), undefined, undefined, 'android');
-    await verifyTrustedTopicProof('coinbase_attestation', ANDROID, coinbaseIssuerInputs(), undefined, undefined, 'android_factory');
-    await verifyTrustedTopicProof('coinbase_attestation', STANDARD_KYC, coinbaseIssuerInputs());
-    expect(state.calls.map(c => c.to)).toEqual([
-      '0x836d8b0fd01bed4e34220ebcee6d63265951fbf9',
-      '0x87d9a66cacac95b2bc43bac8e610c59acb67c5e0',
-      '0x6fc22d3576fb70457d1529b3f70f711a3cba7a7f',
-    ]);
-  });
-
-  it('production OIDC is the new Base mainnet verifier 0xf1aa88ad…7f35', async () => {
-    vi.stubEnv('APP_ENV', 'production');
-    expect(await verifyTrustedTopicProof('oidc_domain_attestation', proofOfLog(20), oidcIssuerInputs())).toEqual({ valid: true });
-    expect(state.calls.map(c => c.to)).toEqual(['0xf1aa88ad844bfd1dc552526a67f5980aad4e7f35']);
+    const inputs = circuit === 'coinbase_attestation' ? coinbaseIssuerInputs(undefined, { oprfDomain: 'openstoa.xyz' }) : oidcIssuerInputs();
+    const result = await verifyTrustedTopicProof(circuit, proof, inputs, undefined, undefined, variant);
+    expect(result.valid).toBe(false);
+    expect(state.calls).toHaveLength(0);
   });
 
   it.each([['ios'], [''], ['__proto__'], ['Android']])('variant %j is refused without a call', async (variant) => {
@@ -156,13 +155,17 @@ describe('signerVariant selects among core\'s pinned verifiers', () => {
 });
 
 describe('relay results carry their signerVariant to core', () => {
+  const R = '5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d';
+  beforeEach(() => {
+    store.set(`community:relay-request:${R}`, JSON.stringify({ scope: 'zkproofport-community', circuit: 'coinbase_attestation', oprfDomain: STAGING_OPRF_DOMAIN }));
+  });
   const result = (extra: Record<string, unknown>) => ({
-    requestId: 'r', status: 'completed', circuit: 'coinbase_attestation',
-    proof: ANDROID, publicInputs: coinbaseIssuerInputs(), ...extra,
+    requestId: R, status: 'completed', circuit: 'coinbase_attestation',
+    proof: ANDROID, publicInputs: coinbaseIssuerInputs(undefined, { requestId: R }), ...extra,
   }) as never;
 
   it('an android result verifies on the android contract', async () => {
-    expect(await verifyProofFromRelay(result({ signerVariant: 'android' }), 'r')).toEqual({ valid: true });
+    expect((await verifyProofFromRelay(result({ signerVariant: 'android' }), R)).valid).toBe(true);
     expect(state.calls.map(c => c.to)).toEqual([getPinnedVariantVerifier('coinbase_attestation', 'android', 84532).address]);
   });
 
@@ -171,14 +174,14 @@ describe('relay results carry their signerVariant to core', () => {
       signerVariant: 'android',
       verifierAddress: getPinnedVerifier('coinbase_attestation', 84532).address,
       chainId: 84532,
-    }), 'r');
+    }), R);
     expect(verdict.valid).toBe(false);
     expect(verdict.error).toMatch(/Refusing rather than trusting the response/);
     expect(state.calls).toHaveLength(0);
   });
 
   it('the same result without its signerVariant is refused', async () => {
-    const verdict = await verifyProofFromRelay(result({}), 'r');
+    const verdict = await verifyProofFromRelay(result({}), R);
     expect(verdict.valid).toBe(false);
     expect(state.calls).toHaveLength(0);
   });
@@ -186,12 +189,7 @@ describe('relay results carry their signerVariant to core', () => {
 
 describe('the topic gate forwards body.signerVariant', () => {
   const userId = 'user-1';
-  const kycInputs = () => {
-    const inputs = coinbaseIssuerInputs();
-    Buffer.from(computeScopeHash(topicProofScope(userId)).slice(2), 'hex')
-      .forEach((byte, i) => inputs[COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT.SCOPE_START + i] = proofField(byte));
-    return inputs;
-  };
+  const kycInputs = () => coinbaseIssuerInputs(undefined, { scope: topicProofScope(userId) });
 
   it('an android KYC proof joins through the android verifier', async () => {
     const response = await requireTopicProof(userId, { proofType: 'kyc' }, { proof: ANDROID, publicInputs: kycInputs(), signerVariant: 'android' });

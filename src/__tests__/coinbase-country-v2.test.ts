@@ -1,14 +1,14 @@
 /**
- * OpenStoa on @zkproofport-app/core 0.4.0-beta.3: Coinbase Country v2
- * (`coinbase_country_attestation`, 215 public inputs).
+ * OpenStoa on @zkproofport-app/core 0.4.0-beta.9: Coinbase Country v2
+ * (`coinbase_country_attestation`, 155 public inputs with the OPRF nullifier).
  *
  * Edge matrix (each row maps to a test below):
- *  - count: 215 reaches the v2 verifier; v1's 150 refused before any network
- *    call; 214 / 216 / 0 refused.
+ *  - count: 155 reaches the v2 verifier; earlier shapes 90 / 150 / 215 refused
+ *    before any network call; 154 / 156 / 0 refused.
  *  - verifier per environment and signer package: standard / android /
- *    android_factory in staging (Base Sepolia) and production (Base mainnet)
- *    call that package's pinned contract, which is the deployment named in the
- *    circuits records; an android claim on a standard-length proof and an
+ *    android_factory in staging (Base Sepolia) call that package's pinned
+ *    contract; production (Base mainnet) is refused with no call while core
+ *    holds those verifiers as awaiting a redeploy; an android claim on a standard-length proof and an
  *    android-length proof with no claim refused without a call.
  *  - attested_at (core): 16 minutes old / 6 minutes ahead refused before the call.
  *  - the list: a Country proof with no requested list is refused (never
@@ -25,7 +25,7 @@
  *    for the POLLED request id; no record, a record for another circuit, a
  *    record with no or a corrupt list, and a proof over another list are
  *    refused; the record of another request id is not consulted.
- *  - unaffected: KYC v2 (193) and OIDC v2 (214) still verify with no country
+ *  - unaffected: KYC v2 (133) and OIDC v2 (214) still verify with no country
  *    list, and a list passed with them changes nothing.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -35,7 +35,7 @@ import {
   getPinnedVariantVerifier,
   getPinnedVerifier,
 } from '@zkproofport-app/core';
-import { coinbaseIssuerInputs, countryIssuerInputs, encodedBool, jwksFetch, oidcIssuerInputs, proofField } from './fixtures/trusted-proof';
+import { coinbaseIssuerInputs, countryIssuerInputs, encodedBool, jwksFetch, oidcIssuerInputs, proofField, STAGING_OPRF_DOMAIN } from './fixtures/trusted-proof';
 
 const state = vi.hoisted(() => ({ calls: [] as string[], result: vi.fn() }));
 vi.mock('ethers', async () => {
@@ -85,18 +85,18 @@ beforeEach(() => {
 });
 
 describe('Coinbase Country v2 count', () => {
-  it('OpenStoa expects core\'s 215', () => {
-    expect(PUBLIC_INPUT_COUNTS.coinbase_country_attestation).toBe(215);
+  it('OpenStoa expects core\'s 155', () => {
+    expect(PUBLIC_INPUT_COUNTS.coinbase_country_attestation).toBe(155);
   });
 
-  it('a 215-input proof reaches the Base Sepolia v2 verifier', async () => {
+  it('a 155-input proof reaches the Base Sepolia v2 verifier', async () => {
     expect(await verifyTrustedTopicProof(COUNTRY, STANDARD, countryIssuerInputs(), undefined, undefined, undefined, KR)).toEqual({ valid: true });
-    expect(state.calls).toEqual(['0xc5363d7587bd580148373d0d8b7909be423242cb']);
+    expect(state.calls).toEqual(['0xe88033179576869c8730160ecbfaa7e5b2c1a4a9']);
   });
 
-  it.each([0, 150, 214, 216])('%i inputs are refused before any network call', async (n) => {
+  it.each([0, 90, 150, 215, 154, 156])('%i inputs are refused before any network call', async (n) => {
     const result = await verifyTrustedTopicProof(COUNTRY, STANDARD, Array(n).fill(proofField(0)), undefined, undefined, undefined, KR);
-    expect(result).toEqual({ valid: false, error: 'Expected 215 32-byte public inputs for coinbase_country_attestation' });
+    expect(result).toEqual({ valid: false, error: 'Expected 155 32-byte public inputs for coinbase_country_attestation' });
     expect(state.calls).toHaveLength(0);
   });
 
@@ -115,13 +115,19 @@ describe('Coinbase Country v2 count', () => {
 
 describe('each Country package verifies on its own pinned contract', () => {
   const rows = [
-    ['staging', 84532, 'standard', '0xc5363d7587bd580148373d0d8b7909be423242cb'],
-    ['staging', 84532, 'android', '0x98013abb7ac83b6c985dcfbd5748ad2ae04c8c12'],
-    ['staging', 84532, 'android_factory', '0xd7bfd6d7bcc6c627da12cfcdf39fca6f64fdc0b9'],
-    ['production', 8453, 'standard', '0x509dee10cc1578361b450fed7475ea3bd69c6e8d'],
-    ['production', 8453, 'android', '0xb57182062141f59ddbb98da73764ec1676689832'],
-    ['production', 8453, 'android_factory', '0x1f2975abd0711cf6b98084829e04712ee105d8f7'],
+    ['staging', 84532, 'standard', '0xe88033179576869c8730160ecbfaa7e5b2c1a4a9'],
+    ['staging', 84532, 'android', '0x8e86cc23c908792ad4f2eb1df9a485a518eeea0e'],
+    ['staging', 84532, 'android_factory', '0x26d4cfae6654c31d10d669c0ebc6428802adf9d0'],
   ] as const;
+
+  it.each(['standard', 'android', 'android_factory'] as const)('production / %s is refused with no contract call', async (variant) => {
+    vi.stubEnv('APP_ENV', 'production');
+    const proof = variant === 'standard' ? STANDARD : ANDROID;
+    const claim = variant === 'standard' ? undefined : variant;
+    const result = await verifyTrustedTopicProof(COUNTRY, proof, countryIssuerInputs({ oprfDomain: 'openstoa.xyz' }), undefined, undefined, claim, KR);
+    expect(result.valid).toBe(false);
+    expect(state.calls).toHaveLength(0);
+  });
 
   it.each(rows)('%s (%i) / %s -> %s', async (env, chainId, variant, address) => {
     vi.stubEnv('APP_ENV', env);
@@ -211,7 +217,8 @@ describe('the topic gate', () => {
   it.each([
     ['another list', ['KR'], countryIssuerInputs({ countries: ['US'], scope })],
     ['an exclusion proof', ['KR'], countryIssuerInputs({ countries: ['KR'], isIncluded: 0, scope })],
-    ['a v1 (150-input) proof', ['KR'], countryIssuerInputs({ countries: ['KR'], scope }).slice(0, 150)],
+    ['a pre-OPRF (150-input) proof', ['KR'], countryIssuerInputs({ countries: ['KR'], scope }).slice(0, 150)],
+    ['a proof made for another OPRF domain', ['KR'], countryIssuerInputs({ countries: ['KR'], scope, oprfDomain: 'other.example' })],
     ['another account\'s scope', ['KR'], countryIssuerInputs({ countries: ['KR'], scope: topicProofScope('someone-else') })],
     ['length 0', ['KR'], countryIssuerInputs({ countries: [], length: 0, scope })],
     ['length 11', TEN, countryIssuerInputs({ countries: TEN, length: 11, scope })],
@@ -237,31 +244,38 @@ describe('the topic gate', () => {
 describe('a Country relay result is verified against the list OpenStoa asked for', () => {
   const record = (requestId: string, value: unknown) =>
     store.data.set(`community:relay-request:${requestId}`, typeof value === 'string' ? value : JSON.stringify(value));
+  // The proof answers the POLLED request: its signal_hash is that request's.
   const result = (extra: Record<string, unknown> = {}) => ({
     requestId: 'carried', status: 'completed', circuit: COUNTRY,
-    proof: STANDARD, publicInputs: countryIssuerInputs({ countries: ['KR'] }), ...extra,
+    proof: STANDARD, publicInputs: countryIssuerInputs({ countries: ['KR'], scope: 's', requestId: 'polled' }), ...extra,
   }) as never;
+  const D = STAGING_OPRF_DOMAIN;
 
   it('verifies against the record of the polled id', async () => {
-    record('polled', { scope: 's', circuit: COUNTRY, countryCondition: KR });
-    expect(await verifyProofFromRelay(result(), 'polled')).toEqual({ valid: true });
+    record('polled', { scope: 's', circuit: COUNTRY, oprfDomain: D, countryCondition: KR });
+    expect(await verifyProofFromRelay(result(), 'polled')).toEqual({ valid: true, request: { scope: 's', requestId: 'polled', oprfDomain: D } });
     expect(state.calls).toHaveLength(1);
   });
 
   it('an android result verifies on the android contract', async () => {
-    record('polled', { scope: 's', circuit: COUNTRY, countryCondition: KR });
-    expect(await verifyProofFromRelay(result({ proof: ANDROID, signerVariant: 'android' }), 'polled')).toEqual({ valid: true });
+    record('polled', { scope: 's', circuit: COUNTRY, oprfDomain: D, countryCondition: KR });
+    expect(await verifyProofFromRelay(result({ proof: ANDROID, signerVariant: 'android' }), 'polled')).toEqual({ valid: true, request: { scope: 's', requestId: 'polled', oprfDomain: D } });
     expect(state.calls).toEqual([getPinnedVariantVerifier(COUNTRY, 'android', 84532).address]);
   });
 
   it.each([
     ['no record', undefined],
     ['a record for another circuit', { scope: 's', circuit: 'oidc_domain_attestation' }],
-    ['a record with no list', { scope: 's', circuit: COUNTRY }],
-    ['a record with an invalid list', { scope: 's', circuit: COUNTRY, countryCondition: { countryList: [], isIncluded: true } }],
-    ['a record with no direction', { scope: 's', circuit: COUNTRY, countryCondition: { countryList: ['KR'] } }],
+    ['a record with no list', { scope: 's', circuit: COUNTRY, oprfDomain: D }],
+    ['a record with no OPRF domain', { scope: 's', circuit: COUNTRY, countryCondition: KR }],
+    ['a record with an empty OPRF domain', { scope: 's', circuit: COUNTRY, oprfDomain: '', countryCondition: KR }],
+    ['a record with a numeric OPRF domain', { scope: 's', circuit: COUNTRY, oprfDomain: 7, countryCondition: KR }],
+    ['a record naming another OPRF domain', { scope: 's', circuit: COUNTRY, oprfDomain: 'other.example', countryCondition: KR }],
+    ['a record over another scope', { scope: 't', circuit: COUNTRY, oprfDomain: D, countryCondition: KR }],
+    ['a record with an invalid list', { scope: 's', circuit: COUNTRY, oprfDomain: D, countryCondition: { countryList: [], isIncluded: true } }],
+    ['a record with no direction', { scope: 's', circuit: COUNTRY, oprfDomain: D, countryCondition: { countryList: ['KR'] } }],
     ['a corrupt record', '{not json'],
-    ['a record over another list', { scope: 's', circuit: COUNTRY, countryCondition: { countryList: ['US'], isIncluded: true } }],
+    ['a record over another list', { scope: 's', circuit: COUNTRY, oprfDomain: D, countryCondition: { countryList: ['US'], isIncluded: true } }],
   ])('%s: refused without a contract call', async (_label, value) => {
     if (value !== undefined) record('polled', value);
     const verdict = await verifyProofFromRelay(result(), 'polled');
@@ -270,7 +284,7 @@ describe('a Country relay result is verified against the list OpenStoa asked for
   });
 
   it('the record under the id the result carries is not consulted', async () => {
-    record('carried', { scope: 's', circuit: COUNTRY, countryCondition: KR });
+    record('carried', { scope: 's', circuit: COUNTRY, oprfDomain: D, countryCondition: KR });
     expect((await verifyProofFromRelay(result(), 'polled')).valid).toBe(false);
     expect(state.calls).toHaveLength(0);
   });
@@ -287,10 +301,11 @@ describe('KYC v2 and OIDC v2 are unaffected', () => {
     expect(await verifyTrustedTopicProof('oidc_domain_attestation', STANDARD, oidcIssuerInputs())).toEqual({ valid: true });
   });
 
-  it('a KYC relay result reads no record', async () => {
+  it('a KYC relay result is verified against its own record (no country list)', async () => {
+    store.data.set('community:relay-request:r', JSON.stringify({ scope: 'zkproofport-community', circuit: 'coinbase_attestation', oprfDomain: STAGING_OPRF_DOMAIN }));
     const verdict = await verifyProofFromRelay({
-      requestId: 'r', status: 'completed', circuit: 'coinbase_attestation', proof: STANDARD, publicInputs: coinbaseIssuerInputs(),
+      requestId: 'r', status: 'completed', circuit: 'coinbase_attestation', proof: STANDARD, publicInputs: coinbaseIssuerInputs(undefined, { requestId: 'r' }),
     } as never, 'r');
-    expect(verdict).toEqual({ valid: true });
+    expect(verdict.valid).toBe(true);
   });
 });

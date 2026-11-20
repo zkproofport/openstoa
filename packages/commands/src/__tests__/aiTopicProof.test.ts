@@ -11,9 +11,12 @@ import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT } from '@zkproofport-app/core';
 import { resolveAiTopicProverPath, spawnAiTopicProver, startAiTopicProof } from '../aiTopicProof';
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 const scope = 'zkproofport-community:topic:alice';
+// The OPRF domain the server names in proofRequirement.oprfDomain (staging's).
+const oprfDomain = 'stg-community.zkproofport.app';
 function harness() {
  const child = Object.assign(new EventEmitter(), { stdout:new EventEmitter(), stderr:new EventEmitter(), kill:vi.fn() });
  const spawn = vi.fn((_args: string[], _env: NodeJS.ProcessEnv)=>child);
@@ -21,7 +24,7 @@ function harness() {
  const deps = {spawn,terminate,env:{ATTESTATION_KEY:'test-key-only',PROOFPORT_URL:'http://localhost:4002',OPENSTOA_API_KEY:'never-forward'}};
  return {child,spawn,terminate,deps};
 }
-function complete(child:ReturnType<typeof harness>["child"], count=193, extra={}) {
+function complete(child:ReturnType<typeof harness>["child"], count=133, extra={}) {
  child.stdout.emit('data',JSON.stringify({proof:'0xab',publicInputs:Array(count).fill('0x'+'00'.repeat(32)),...extra}));
  child.emit('close',0);
 }
@@ -38,7 +41,7 @@ describe('AI topic proof adapter',()=>{
   });
  });
  it.each(['exit','SIGINT','SIGTERM'] as const)('cleans only active adapter children on %s and releases lifecycle hooks',async(event)=>{
-  const existing=new Set((process as EventEmitter).listeners(event));const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps);
+  const existing=new Set((process as EventEmitter).listeners(event));const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,oprfDomain,consent:true},h.deps);
   const hook=(process as EventEmitter).listeners(event).find(listener=>!existing.has(listener));expect(hook).toBeTypeOf('function');
   const kill=vi.spyOn(process,'kill').mockReturnValue(true);
   (hook as (...args:unknown[])=>void)(0);
@@ -47,7 +50,7 @@ describe('AI topic proof adapter',()=>{
   if(event==='exit')expect(kill).not.toHaveBeenCalled();
  });
  it('removes exit and signal listeners when the last proof completes',async()=>{
-  const before=['exit','SIGINT','SIGTERM'].map(event=>process.listenerCount(event));const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps);complete(h.child);await handle.wait();
+  const before=['exit','SIGINT','SIGTERM'].map(event=>process.listenerCount(event));const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,oprfDomain,consent:true},h.deps);complete(h.child);await handle.wait();
   expect(['exit','SIGINT','SIGTERM'].map(event=>process.listenerCount(event))).toEqual(before);
  });
  it.each([
@@ -63,8 +66,8 @@ describe('AI topic proof adapter',()=>{
   expect(JSON.stringify(handle.status())).not.toContain('hidden-token');
  });
  it.each([
-  [{proofType:'kyc'},['coinbase_kyc']],
-  [{proofType:'country',countries:['kr','US']},['coinbase_country','--countries','KR,US','--included','true']],
+  [{proofType:'kyc',oprfDomain},['coinbase_kyc','--oprf-domain',oprfDomain]],
+  [{proofType:'country',countries:['kr','US'],oprfDomain},['coinbase_country','--countries','KR,US','--included','true','--oprf-domain',oprfDomain]],
   [{proofType:'google_workspace'},['--login-google-workspace']],
   [{proofType:'microsoft_365'},['--login-microsoft-365']],
   [{proofType:'workspace',provider:'google'},['--login-google-workspace']],
@@ -77,21 +80,25 @@ describe('AI topic proof adapter',()=>{
   else expect(h.spawn.mock.calls[0][1]).not.toHaveProperty('ATTESTATION_KEY');
   handle.cancel();
  });
- it('never starts before explicit consent',()=>{const h=harness();expect(()=>startAiTopicProof({proofType:'kyc',scope,consent:false} as never,h.deps)).toThrow(/consent/i);expect(h.spawn).not.toHaveBeenCalled();});
- it('requires Coinbase key in the environment without exposing it as an argument',()=>{const h=harness();expect(()=>startAiTopicProof({proofType:'kyc',scope,consent:true},{...h.deps,env:{}})).toThrow(/ATTESTATION_KEY/);expect(h.spawn).not.toHaveBeenCalled();});
+ it('never starts before explicit consent',()=>{const h=harness();expect(()=>startAiTopicProof({proofType:'kyc',scope,oprfDomain,consent:false} as never,h.deps)).toThrow(/consent/i);expect(h.spawn).not.toHaveBeenCalled();});
+ it('requires Coinbase key in the environment without exposing it as an argument',()=>{const h=harness();expect(()=>startAiTopicProof({proofType:'kyc',scope,oprfDomain,consent:true},{...h.deps,env:{}})).toThrow(/ATTESTATION_KEY/);expect(h.spawn).not.toHaveBeenCalled();});
+ it('a Coinbase proof without the server\'s OPRF domain is refused before spawning, never filled in',()=>{const h=harness();expect(()=>startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps)).toThrow(/OPRF domain/);expect(h.spawn).not.toHaveBeenCalled();});
+ it('an OIDC proof carries no --oprf-domain even when one is passed',()=>{const h=harness();const handle=startAiTopicProof({proofType:'google_workspace',scope,oprfDomain,consent:true},h.deps);expect(h.spawn.mock.calls[0][0]).not.toContain('--oprf-domain');handle.cancel();});
  it('workspace requires no attestation wallet',()=>{const h=harness();const handle=startAiTopicProof({proofType:'google_workspace',scope,consent:true},{...h.deps,env:{}});expect(h.spawn).toHaveBeenCalledOnce();handle.cancel();});
- it.each([{proofType:'unknown'}, {proofType:'__proto__'}, {proofType:'workspace'}, {proofType:'country',countries:[]}, {proofType:'country',countries:['USA']}, {proofType:'country',countries:Array(11).fill('KR')}, {proofType:'google_workspace',provider:'microsoft'}, {proofType:'kyc',scope:''}, {proofType:'kyc',scope:'x'.repeat(513)}])('refuses invalid or ambiguous input %j',input=>{const h=harness();expect(()=>startAiTopicProof({scope,consent:true,...input} as never,h.deps)).toThrow();expect(h.spawn).not.toHaveBeenCalled();});
+ it.each([{proofType:'unknown'}, {proofType:'__proto__'}, {proofType:'workspace'}, {proofType:'country',countries:[]}, {proofType:'country',countries:['USA']}, {proofType:'country',countries:Array(11).fill('KR')}, {proofType:'google_workspace',provider:'microsoft'}, {proofType:'kyc',scope:''}, {proofType:'kyc',scope:'x'.repeat(513)},
+  {proofType:'kyc',oprfDomain:undefined}, {proofType:'kyc',oprfDomain:''}, {proofType:'kyc',oprfDomain:'a\u0000b'}, {proofType:'kyc',oprfDomain:'x'.repeat(257)}, {proofType:'kyc',oprfDomain:7},
+  {proofType:'country',countries:['KR'],oprfDomain:undefined}])('refuses invalid or ambiguous input %j',input=>{const h=harness();expect(()=>startAiTopicProof({scope,oprfDomain,consent:true,...input} as never,h.deps)).toThrow();expect(h.spawn).not.toHaveBeenCalled();});
  it('surfaces a chunked Google device prompt promptly and discards unrelated stderr',()=>{const h=harness();const handle=startAiTopicProof({proofType:'google_workspace',scope,consent:true},h.deps);h.child.stderr.emit('data','secret jwt-value\n  Op');h.child.stderr.emit('data','en: https://www.google.com/device\n  Co');h.child.stderr.emit('data','de: ABCD-EFGH\n');expect(handle.status()).toEqual({status:'awaiting_authorization',verificationUrl:'https://www.google.com/device',userCode:'ABCD-EFGH'});expect(JSON.stringify(handle.status())).not.toContain('jwt-value');handle.cancel();});
  it('accepts the published Microsoft device URL',()=>{const h=harness();const handle=startAiTopicProof({proofType:'microsoft_365',scope,consent:true},h.deps);h.child.stderr.emit('data','Open: https://microsoft.com/devicelogin\nCode: 12345678\n');expect(handle.status().status).toBe('awaiting_authorization');handle.cancel();});
  it('rejects a provider prompt pointing at another host',async()=>{const h=harness();const handle=startAiTopicProof({proofType:'google_workspace',scope,consent:true},h.deps);h.child.stderr.emit('data','Open: https://attacker.invalid/device\nCode: ABCD\n');await expect(handle.wait()).rejects.toThrow(/device|provider/i);expect(h.terminate).toHaveBeenCalledOnce();});
- it('normalizes returned arrays, exposes no proof in snapshots, and strips extra fields',async()=>{const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps);complete(h.child,193,{jwt:'secret-token',privateKey:'secret-key'});expect(await handle.wait()).toEqual({proof:'0xab',publicInputs:'0x'+'00'.repeat(32*193)});expect(handle.status()).toEqual({status:'completed'});});
- it('waits for close so trailing stdout after exit is not dropped',async()=>{const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps);h.child.emit('exit',0);expect(handle.status().status).not.toBe('completed');complete(h.child);await expect(handle.wait()).resolves.toHaveProperty('proof','0xab');});
- it.each(['not json',JSON.stringify({proof:'secret'}),JSON.stringify({proof:'0xab',publicInputs:['0x00']})])('fails closed on malformed output without echoing it',async(output)=>{const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps);h.child.stdout.emit('data',output);h.child.emit('close',0);await expect(handle.wait()).rejects.toThrow(/proof|output/i);expect(JSON.stringify(handle.status())).not.toContain('secret');});
- it.each(['stdout','stderr'] as const)('terminates oversized %s without retaining output',async(stream)=>{const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps);h.child[stream].emit('data','SENSITIVE'.repeat(40000));await expect(handle.wait()).rejects.toThrow(/limit/i);expect(h.terminate).toHaveBeenCalledOnce();expect(JSON.stringify(handle.status())).not.toContain('SENSITIVE');});
+ it('normalizes returned arrays, exposes no proof in snapshots, and strips extra fields',async()=>{const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,oprfDomain,consent:true},h.deps);complete(h.child,133,{jwt:'secret-token',privateKey:'secret-key'});expect(await handle.wait()).toEqual({proof:'0xab',publicInputs:'0x'+'00'.repeat(32*133)});expect(handle.status()).toEqual({status:'completed'});});
+ it('waits for close so trailing stdout after exit is not dropped',async()=>{const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,oprfDomain,consent:true},h.deps);h.child.emit('exit',0);expect(handle.status().status).not.toBe('completed');complete(h.child);await expect(handle.wait()).resolves.toHaveProperty('proof','0xab');});
+ it.each(['not json',JSON.stringify({proof:'secret'}),JSON.stringify({proof:'0xab',publicInputs:['0x00']})])('fails closed on malformed output without echoing it',async(output)=>{const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,oprfDomain,consent:true},h.deps);h.child.stdout.emit('data',output);h.child.emit('close',0);await expect(handle.wait()).rejects.toThrow(/proof|output/i);expect(JSON.stringify(handle.status())).not.toContain('secret');});
+ it.each(['stdout','stderr'] as const)('terminates oversized %s without retaining output',async(stream)=>{const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,oprfDomain,consent:true},h.deps);h.child[stream].emit('data','SENSITIVE'.repeat(40000));await expect(handle.wait()).rejects.toThrow(/limit/i);expect(h.terminate).toHaveBeenCalledOnce();expect(JSON.stringify(handle.status())).not.toContain('SENSITIVE');});
  it('reports a fixed OAuth configuration error without raw token text',async()=>{const h=harness();const handle=startAiTopicProof({proofType:'google_workspace',scope,consent:true},h.deps);h.child.stderr.emit('data','{"error":"deleted_client","token":"secret-token"}\n');h.child.emit('close',1);await expect(handle.wait()).rejects.toThrow(/OAuth client/i);expect(JSON.stringify(handle.status())).not.toContain('secret-token');expect(h.spawn).toHaveBeenCalledOnce();});
- it('handles process errors without exposing environment or OS text',async()=>{const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps);h.child.emit('error',new Error('private env secret'));await expect(handle.wait()).rejects.toThrow(/start|process/i);expect(JSON.stringify(handle.status())).not.toContain('secret');});
- it('cancels once and ignores late completion',async()=>{const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps);handle.cancel();handle.cancel();complete(h.child);await expect(handle.wait()).rejects.toThrow(/cancel/i);expect(handle.status()).toEqual({status:'cancelled'});expect(h.terminate).toHaveBeenCalledOnce();});
- it('enforces the overall timeout without automatically retrying',async()=>{vi.useFakeTimers();const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},{...h.deps,timeoutMs:50});await vi.advanceTimersByTimeAsync(51);await expect(handle.wait()).rejects.toThrow(/timed out/i);expect(h.spawn).toHaveBeenCalledOnce();expect(h.terminate).toHaveBeenCalledOnce();});
+ it('handles process errors without exposing environment or OS text',async()=>{const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,oprfDomain,consent:true},h.deps);h.child.emit('error',new Error('private env secret'));await expect(handle.wait()).rejects.toThrow(/start|process/i);expect(JSON.stringify(handle.status())).not.toContain('secret');});
+ it('cancels once and ignores late completion',async()=>{const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,oprfDomain,consent:true},h.deps);handle.cancel();handle.cancel();complete(h.child);await expect(handle.wait()).rejects.toThrow(/cancel/i);expect(handle.status()).toEqual({status:'cancelled'});expect(h.terminate).toHaveBeenCalledOnce();});
+ it('enforces the overall timeout without automatically retrying',async()=>{vi.useFakeTimers();const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,oprfDomain,consent:true},{...h.deps,timeoutMs:50});await vi.advanceTimersByTimeAsync(51);await expect(handle.wait()).rejects.toThrow(/timed out/i);expect(h.spawn).toHaveBeenCalledOnce();expect(h.terminate).toHaveBeenCalledOnce();});
  it('bounds the wait for an OAuth device prompt',async()=>{vi.useFakeTimers();const h=harness();const handle=startAiTopicProof({proofType:'google_workspace',scope,consent:true},{...h.deps,deviceTimeoutMs:25});await vi.advanceTimersByTimeAsync(26);await expect(handle.wait()).rejects.toThrow(/device|timed out/i);expect(h.terminate).toHaveBeenCalledOnce();});
 });
 
@@ -133,18 +140,18 @@ describe('Coinbase KYC v2 from the installed prover',()=>{
    if(dirname(dir)===dir)throw new Error(`${name} is not installed above ${from}`);
   }
  }
- it.each([128,192,194])('a KYC proof with %i public inputs is refused: v2 has exactly 193 (128 is v1)',async(count)=>{
-  const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps);complete(h.child,count);
+ it.each([68,128,193,132,134])('a KYC proof with %i public inputs is refused: v2 with the OPRF nullifier has exactly 133',async(count)=>{
+  const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,oprfDomain,consent:true},h.deps);complete(h.child,count);
   await expect(handle.wait()).rejects.toMatchObject({code:'invalid_output'});
  });
- // Coinbase Country v2: exactly 215 public inputs (core); v1's 150 is refused here.
- it.each([[215,true],[150,false],[214,false],[216,false]])('a country proof with %i public inputs: accepted %s',async(count,ok)=>{
-  const h=harness();const handle=startAiTopicProof({proofType:'country',countries:['KR'],scope,consent:true},h.deps);complete(h.child,count);
-  if(ok)await expect(handle.wait()).resolves.toEqual({proof:'0xab',publicInputs:'0x'+'00'.repeat(32*215)});
+ // Coinbase Country v2 with the OPRF nullifier: exactly 155 public inputs (core); earlier 90 / 150 / 215 refused here.
+ it.each([[155,true],[90,false],[150,false],[215,false],[154,false],[156,false]])('a country proof with %i public inputs: accepted %s',async(count,ok)=>{
+  const h=harness();const handle=startAiTopicProof({proofType:'country',countries:['KR'],scope,oprfDomain,consent:true},h.deps);complete(h.child,count);
+  if(ok)await expect(handle.wait()).resolves.toEqual({proof:'0xab',publicInputs:'0x'+'00'.repeat(32*155)});
   else await expect(handle.wait()).rejects.toMatchObject({code:'invalid_output'});
  });
  it('a v1 KYC proof packed as one hex string is refused too',async()=>{
-  const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps);
+  const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,oprfDomain,consent:true},h.deps);
   h.child.stdout.emit('data',JSON.stringify({proof:'0xab',publicInputs:'0x'+'00'.repeat(32*128)}));h.child.emit('close',0);
   await expect(handle.wait()).rejects.toMatchObject({code:'invalid_output'});
  });
@@ -154,9 +161,11 @@ describe('Coinbase KYC v2 from the installed prover',()=>{
   const sdk=await import(pathToFileURL(join(sdkDir,'dist','index.js')).href) as {circuitBindsAction?:(id:string)=>boolean};
   // v2 binds an optional EIP-712 action; every release that proves v1 has no such export or answers false.
   expect(sdk.circuitBindsAction?.('coinbase_attestation')).toBe(true);
+  // The count the installed prover emits must be the one OpenStoa's core expects (133, the OPRF
+  // nullifier shape). Red while the installed @zkproofport-ai/mcp proves an earlier shape.
   const core=createRequire(join(sdkDir,'package.json'))('@zkproofport-app/core') as {COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT?:number};
-  expect(core.COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT).toBe(193);
-  const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,consent:true},h.deps);complete(h.child,core.COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT);
-  await expect(handle.wait()).resolves.toEqual({proof:'0xab',publicInputs:'0x'+'00'.repeat(32*193)});
+  expect(core.COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT).toBe(COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT);
+  const h=harness();const handle=startAiTopicProof({proofType:'kyc',scope,oprfDomain,consent:true},h.deps);complete(h.child,core.COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT);
+  await expect(handle.wait()).resolves.toEqual({proof:'0xab',publicInputs:'0x'+'00'.repeat(32*COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT)});
  });
 });

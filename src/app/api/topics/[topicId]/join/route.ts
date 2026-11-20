@@ -39,16 +39,22 @@ const ROUTE = '/api/topics/[topicId]/join';
  *       `proofType` field:
  *         - `none` (or unset / `requiresCountryProof=false`) — no proof required.
  *         - `country` (legacy: `requiresCountryProof=true`) — circuit
- *           `coinbase_country_attestation` (Coinbase Country v2, 215 public inputs; a 150-input
- *           v1 proof is refused). Proves the caller's residence country is in the topic's
+ *           `coinbase_country_attestation` (Coinbase Country v2, 155 public inputs; 90-, 150- and
+ *           215-input proofs from earlier builds are refused). Proves the caller's residence country is in the topic's
  *           allowed list. The proof must be an inclusion proof (`isIncluded=true`) over exactly
  *           the topic's `allowedCountries` (compared as a set of codes, order does not matter),
  *           and its Coinbase attestation timestamp must be under 15 minutes old, so submit it
  *           soon after generating it.
- *         - `kyc` — circuit `coinbase_attestation`. Proves Coinbase KYC completion.
+ *         - `kyc` — circuit `coinbase_attestation` (Coinbase KYC v2, 133 public inputs; 68-, 128-
+ *           and 193-input proofs from earlier builds are refused). Proves Coinbase KYC completion.
  *         - `workspace` / `google_workspace` / `microsoft_365` — circuit
  *           `oidc_domain_attestation`. Proves the caller's verified Google or Microsoft account
  *           belongs to the topic's allowed domain.
+ *
+ *       A Coinbase KYC or Country proof's nullifier is keyed by OpenStoa's OPRF domain beside
+ *       the scope: generate it with `--scope` = the authenticated challenge `scope` and
+ *       `--oprf-domain` = the challenge's `oprfDomain` (also `proofRequirement.oprfDomain`).
+ *       A proof made for another domain is refused.
  *
  *       Generate the proof through the app/AI workflow for the matching circuit, then send
  *       `{ proof, publicInputs, signerVariant? }`, or use matching valid cached verification. Missing proof/cache
@@ -162,6 +168,13 @@ const ROUTE = '/api/topics/[topicId]/join';
  *                       items:
  *                         type: string
  *                       description: ISO 3166-1 alpha-2 country codes (for country proof type)
+ *                     oprfDomain:
+ *                       type: string
+ *                       nullable: true
+ *                       description: >-
+ *                         For kyc and country: the OPRF domain the proof's nullifier is keyed by. Pass it
+ *                         as `--oprf-domain` to `zkproofport-prove coinbase_kyc` / `coinbase_country`
+ *                         together with `--scope` = proofScope. Null for Google / Microsoft domain proofs.
  *                     guide:
  *                       type: object
  *                       description: Step-by-step instructions for mobile and agent workflows with CLI commands

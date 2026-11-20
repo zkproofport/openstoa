@@ -4,11 +4,11 @@ import {promises as fs} from 'node:fs';
 import * as path from 'node:path';
 import {startAiTopicProof,type AiTopicProofHandle} from './aiTopicProof';
 import {checkSignerVariant,type SignerVariant} from '@masselabs/openstoa';
-import {COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT,COINBASE_COUNTRY_PUBLIC_INPUT_COUNT,OIDC_PUBLIC_INPUT_COUNT} from '@zkproofport-app/core';
+import {COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT,COINBASE_COUNTRY_PUBLIC_INPUT_COUNT,OIDC_PUBLIC_INPUT_COUNT,oprfNameError,reduceOprfName} from '@zkproofport-app/core';
 
 export type ProofMethod='app'|'ai';
 export type ProofProvider='google'|'microsoft';
-export interface ProofRequirement {type:string;circuitType:string;domain?:string;allowedCountries?:string[]}
+export interface ProofRequirement {type:string;circuitType:string;domain?:string;allowedCountries?:string[];oprfDomain?:string}
 export interface ProofWorkflowResult {
  status:'proof_required'|'pending'|'proof_ready'|'completed'|'cancelled'|'expired'|'failed';
  operationId:string;requirement:ProofRequirement;methods:ProofMethod[];expiresAt:string;message:string;
@@ -57,8 +57,19 @@ export class FileProofOperationStore implements ProofOperationStore {
 interface Rest {getApiKey?():string|null;getToken():string|null;request<T=any>(url:string,options?:any):Promise<T>}
 interface WorkflowDeps {rest:Rest;baseUrl:string;store:ProofOperationStore;submit:(action:ProofAction,proof:TopicProof)=>Promise<unknown>;now?:()=>number;startAi?:typeof startAiTopicProof;submitTimeoutMs?:number}
 const CIRCUITS:Record<string,string>={kyc:'coinbase_attestation',country:'coinbase_country_attestation',google_workspace:'oidc_domain_attestation',microsoft_365:'oidc_domain_attestation',workspace:'oidc_domain_attestation'};
-// Public-input count per circuit, from core (KYC v2, Country v2, OIDC v2).
+// Public-input count per circuit, from core (KYC v2 and Country v2 with the OPRF nullifier, OIDC v2).
 const INPUT_COUNTS:Record<string,number>={coinbase_attestation:COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT,coinbase_country_attestation:COINBASE_COUNTRY_PUBLIC_INPUT_COUNT,oidc_domain_attestation:OIDC_PUBLIC_INPUT_COUNT};
+// How each circuit publishes its scope: a wallet credential as ONE field,
+// keccak256(utf8(scope)) mod p (core's reduceOprfName); OIDC as keccak256(utf8(scope)).
+// A wallet credential's nullifier is also keyed by an OPRF domain the server names.
+const SCOPE_ENCODINGS:Record<string,'oprf'|'keccak'>={coinbase_attestation:'oprf',coinbase_country_attestation:'oprf',oidc_domain_attestation:'keccak'};
+export function expectedScopeField(scope:string,circuit:string):string{
+ if(!Object.hasOwn(SCOPE_ENCODINGS,circuit))throw new Error(`Unknown circuit '${circuit}' for a scope value. Known: ${Object.keys(SCOPE_ENCODINGS).join(', ')}.`);
+ return SCOPE_ENCODINGS[circuit]==='oprf'?reduceOprfName(scope):'0x'+Buffer.from(keccak_256(new TextEncoder().encode(scope))).toString('hex');
+}
+function scopeFieldMatches(value:unknown,scope:string,circuit:string):boolean{
+ return typeof value==='string'&&/^0x[0-9a-fA-F]{1,64}$/.test(value)&&BigInt(value)===BigInt(expectedScopeField(scope,circuit));
+}
 const TTL=15*60*1000;
 const TERMINAL=new Set(['completed','cancelled','expired','failed']);
 /** A proof ready to submit. signerVariant is present only when the proof's result carried one. */
@@ -98,6 +109,8 @@ export class TopicProofWorkflow {
   const requirement:ProofRequirement={type:raw.type,circuitType:raw.circuit};
   if(raw.domain!=null){if(typeof raw.domain!=='string'||raw.domain.length>253)throw new Error('Invalid proof domain');requirement.domain=raw.domain;}
   if(raw.allowedCountries!=null){if(!Array.isArray(raw.allowedCountries)||!raw.allowedCountries.length||raw.allowedCountries.length>10||!raw.allowedCountries.every((v:unknown)=>typeof v==='string'&&/^[A-Z]{2}$/.test(v)))throw new Error('Invalid proof country requirement');requirement.allowedCountries=raw.allowedCountries;}
+  // A wallet credential proof is keyed by the server's OPRF domain; never filled in here.
+  if(SCOPE_ENCODINGS[requirement.circuitType]==='oprf'){if(oprfNameError(raw.oprfDomain)!==null)throw new Error('The server named no valid OPRF domain for this wallet proof');requirement.oprfDomain=raw.oprfDomain;}
   const clean=structuredClone(action);if('input'in clean){delete clean.input.proof;delete clean.input.publicInputs;delete clean.input.signerVariant;}
   const r:Operation={version:1,id:randomUUID(),action:clean,fingerprint:this.fingerprint(),baseUrl:this.deps.baseUrl,scope:body.proofScope,requirement,expiresAt:this.now()+TTL,state:'proof_required'};
   await this.deps.store.write(r);return this.view(r,raw.type==='workspace'?{requiredInputs:['provider (google or microsoft)']}:{});
@@ -122,7 +135,7 @@ export class TopicProofWorkflow {
     if(created.scope!==r.scope||created.circuitType!==r.requirement.circuitType||typeof created.requestId!=='string'||!created.requestId||created.requestId.length>256||typeof created.deepLink!=='string'||!created.deepLink.startsWith('zkproofport://proof-request?'))throw new Error('Invalid app proof request response');
     r.requestId=created.requestId;r.deepLink=created.deepLink;r.state='pending';r.message='Open browserUrl and scan its QR code with ZKProofport, or open deepLink on your phone. Return here after approving the proof.';
    }else{
-    try{const handle=(this.deps.startAi??startAiTopicProof)({proofType:r.requirement.type as any,scope:r.scope,countries:r.requirement.allowedCountries,provider,consent:true});this.ai.set(r.id,handle);r.state='pending';r.message='AI proof started. Check status for the device verification URL/code. Keep this CLI --wait or MCP process running.';}
+    try{const handle=(this.deps.startAi??startAiTopicProof)({proofType:r.requirement.type as any,scope:r.scope,...(r.requirement.oprfDomain?{oprfDomain:r.requirement.oprfDomain}:{}),countries:r.requirement.allowedCountries,provider,consent:true});this.ai.set(r.id,handle);r.state='pending';r.message='AI proof started. Check status for the device verification URL/code. Keep this CLI --wait or MCP process running.';}
     catch(error){const e=error as {requiredInputs?:string[];message?:string};return this.view(r,{status:'proof_required',requiredInputs:e.requiredInputs??[],message:e.message??'Cannot start AI proof; use app mode instead.'});}
    }
    try{await this.deps.store.write(r);}catch(error){this.stopAi(r.id);throw error;}return this.view(r);
@@ -148,8 +161,7 @@ export class TopicProofWorkflow {
   }
   if(data.status==='completed'){
    if(data.circuit!==r.requirement.circuitType)throw new Error('Proof circuit does not match the operation');
-   const expectedScope='0x'+Buffer.from(keccak_256(new TextEncoder().encode(r.scope))).toString('hex');
-   if(typeof data.scopeHash!=='string'||data.scopeHash.toLowerCase()!==expectedScope)throw new Error('Verified proof scope does not match the operation');
+   if(!scopeFieldMatches(data.scopeHash,r.scope,r.requirement.circuitType))throw new Error('Verified proof scope does not match the operation');
    r.state='proof_ready';return {result:this.view(r,{message:'Proof is ready. Resume to finish the original topic action.'}),proof:normalizedProof(data,r.requirement.circuitType)};
   }
   if(['cancelled','expired','failed','error'].includes(data.status)){r.state=data.status==='error'?'failed':data.status;r.message=`App proof ${r.state}.`;await this.deps.store.write(r);return {result:this.view(r)};}

@@ -1,10 +1,12 @@
 import {describe,it,expect,vi,afterEach} from 'vitest';
+import {reduceOprfName} from '@zkproofport-app/core';
 import {TopicProofWorkflow,MemoryProofOperationStore,FileProofOperationStore} from '../topicProofWorkflow';
 import {promises as fs} from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-const scopeHash='0x54397129f0b3b0e5c469a48458023d6386775b7f54c34ae43fb6b09fc47d4ecf';
-const completed={status:'completed',circuit:'coinbase_attestation',scopeHash,proof:'0xaabb',publicInputs:Array(193).fill('0x'+'01'.padStart(64,'0'))};
+// A Coinbase proof's scope is keccak256(scope) mod p (core's reduceOprfName).
+const scopeHash=reduceOprfName('zkproofport-community:topic:alice');
+const completed={status:'completed',circuit:'coinbase_attestation',scopeHash,proof:'0xaabb',publicInputs:Array(133).fill('0x'+'01'.padStart(64,'0'))};
 afterEach(()=>vi.useRealTimers());
 function setup(overrides:Record<string,unknown>={}) {
  let token='credential-a';
@@ -16,7 +18,7 @@ function setup(overrides:Record<string,unknown>={}) {
  const submit=vi.fn(async()=>({id:'created-topic'}));
  const store=new MemoryProofOperationStore();
  const workflow=new TopicProofWorkflow({rest:{getToken:()=>token,request:request as any},baseUrl:'http://localhost:3200',store,submit,...overrides});
- const error={status:402,body:{proofScope:'zkproofport-community:topic:alice',proofRequirement:{type:'kyc',circuit:'coinbase_attestation'}}};
+ const error={status:402,body:{proofScope:'zkproofport-community:topic:alice',proofRequirement:{type:'kyc',circuit:'coinbase_attestation',oprfDomain:'stg-community.zkproofport.app'}}};
  return {workflow,store,request,submit,error,setToken:(t:string)=>{token=t;}};
 }
 describe('topic proof workflow',()=>{
@@ -47,7 +49,7 @@ it('resumes a verified app result once and returns its original result on repeat
  const r=await x.workflow.required(action,x.error);await x.workflow.continue({operationId:r.operationId,method:'app',approved:true});
  x.request.mockResolvedValue(completed as any);
  const done=await x.workflow.resume(r.operationId);expect(done.status).toBe('completed');expect(done.result).toEqual({id:'created-topic'});
- expect(x.submit).toHaveBeenCalledWith({kind:'create',input:{title:'보존할 제목',description:'내용'}},{proof:'0xaabb',publicInputs:'0x'+'1'.padStart(64,'0').repeat(193)});
+ expect(x.submit).toHaveBeenCalledWith({kind:'create',input:{title:'보존할 제목',description:'내용'}},{proof:'0xaabb',publicInputs:'0x'+'1'.padStart(64,'0').repeat(133)});
  expect((await x.workflow.resume(r.operationId)).result).toEqual(done.result);expect(x.submit).toHaveBeenCalledTimes(1);
 });
 it('marks an ambiguous submission failed and never resubmits it',async()=>{
@@ -79,23 +81,23 @@ it('rejects a changed authenticated scope before requesting app proof',async()=>
  await expect(x.workflow.continue({operationId:r.operationId,method:'app',approved:true})).rejects.toThrow(/scope changed/);expect(x.request).toHaveBeenCalledTimes(1);
 });
 it('passes country inclusion and domain/provider requirements to the existing SDK-backed route',async()=>{
- const x=setup();const e={status:402,body:{...x.error.body,proofRequirement:{type:'country',circuit:'coinbase_country_attestation',allowedCountries:['KR','US']}}};
+ const x=setup();const e={status:402,body:{...x.error.body,proofRequirement:{type:'country',circuit:'coinbase_country_attestation',allowedCountries:['KR','US'],oprfDomain:'stg-community.zkproofport.app'}}};
  const r=await x.workflow.required({kind:'join',topicId:'topic'},e);
  x.request.mockImplementation(async(url:string)=>url==='/api/auth/challenge'?{scope:x.error.body.proofScope}:{scope:x.error.body.proofScope,circuitType:'coinbase_country_attestation',requestId:'id',deepLink:'zkproofport://proof-request?data=x'} as any);
  await x.workflow.continue({operationId:r.operationId,method:'app',approved:true});
  expect(x.request).toHaveBeenLastCalledWith('/api/auth/proof-request',expect.objectContaining({body:{mode:'proof',circuitType:'coinbase_country_attestation',countryList:['KR','US'],isIncluded:true}}));
 });
 
-// Coinbase Country v2 has 215 public inputs (core); a v1 proof (150) is refused before submission.
-it.each([[215,true],[150,false],[214,false],[216,false]])('a country result with %i public inputs is submitted: %s',async(count,ok)=>{
- const x=setup();const e={status:402,body:{...x.error.body,proofRequirement:{type:'country',circuit:'coinbase_country_attestation',allowedCountries:['KR']}}};
+// Coinbase Country v2 has 155 public inputs (core); earlier shapes (90, 150, 215) are refused before submission.
+it.each([[155,true],[90,false],[150,false],[215,false],[154,false],[156,false]])('a country result with %i public inputs is submitted: %s',async(count,ok)=>{
+ const x=setup();const e={status:402,body:{...x.error.body,proofRequirement:{type:'country',circuit:'coinbase_country_attestation',allowedCountries:['KR'],oprfDomain:'stg-community.zkproofport.app'}}};
  const r=await x.workflow.required({kind:'join',topicId:'topic'},e);
  x.request.mockImplementation(async(url:string)=>url==='/api/auth/challenge'?{scope:x.error.body.proofScope}:{scope:x.error.body.proofScope,circuitType:'coinbase_country_attestation',requestId:'id',deepLink:'zkproofport://proof-request?data=x'} as any);
  await x.workflow.continue({operationId:r.operationId,method:'app',approved:true});
  x.request.mockResolvedValue({...completed,circuit:'coinbase_country_attestation',publicInputs:Array(count).fill('0x'+'01'.padStart(64,'0')),signerVariant:'android'} as any);
  if(ok){
   expect((await x.workflow.resume(r.operationId)).status).toBe('completed');
-  expect(x.submit).toHaveBeenCalledWith({kind:'join',topicId:'topic'},{proof:'0xaabb',publicInputs:'0x'+'1'.padStart(64,'0').repeat(215),signerVariant:'android'});
+  expect(x.submit).toHaveBeenCalledWith({kind:'join',topicId:'topic'},{proof:'0xaabb',publicInputs:'0x'+'1'.padStart(64,'0').repeat(155),signerVariant:'android'});
  } else {
   await expect(x.workflow.resume(r.operationId)).rejects.toThrow('Invalid proof public inputs');
   expect(x.submit).not.toHaveBeenCalled();
@@ -129,7 +131,7 @@ it('cancels a newly started AI operation if pending persistence fails',async()=>
  await expect(x.workflow.continue({operationId:r.operationId,method:'ai',approved:true})).rejects.toThrow('disk full');expect(cancel).toHaveBeenCalledOnce();
 });
 it('cleans failed and expired AI handles and requires explicit restart after process loss',async()=>{
- let now=100;let status='proving';const cancel=vi.fn();const handle={cancel,status:()=>({status}),wait:async()=>({proof:'0xab',publicInputs:'0x'+'00'.repeat(193*32)})};const x=setup({now:()=>now,startAi:()=>handle});
+ let now=100;let status='proving';const cancel=vi.fn();const handle={cancel,status:()=>({status}),wait:async()=>({proof:'0xab',publicInputs:'0x'+'00'.repeat(133*32)})};const x=setup({now:()=>now,startAi:()=>handle});
  const r=await x.workflow.required({kind:'join',topicId:'topic'},x.error);await x.workflow.continue({operationId:r.operationId,method:'ai',approved:true});status='failed';expect((await x.workflow.status(r.operationId)).status).toBe('failed');expect((x.workflow as any).ai.size).toBe(0);
  status='proving';const expired=await x.workflow.required({kind:'join',topicId:'topic'},x.error);await x.workflow.continue({operationId:expired.operationId,method:'ai',approved:true});now+=16*60*1000;expect((await x.workflow.status(expired.operationId)).status).toBe('expired');expect(cancel).toHaveBeenCalledOnce();expect((x.workflow as any).ai.size).toBe(0);
  const pending=await x.workflow.required({kind:'join',topicId:'topic'},x.error);await x.workflow.continue({operationId:pending.operationId,method:'ai',approved:true});

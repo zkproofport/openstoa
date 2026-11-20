@@ -1,5 +1,5 @@
 /**
- * The Coinbase Country topic gate on core 0.4.0-beta.3 (Country v2, 215
+ * The Coinbase Country topic gate on core 0.4.0-beta.9 (Country v2, 155
  * public inputs), over HTTP against a real deployment. No prover needed:
  * every case is a refusal that happens before any contract call, the 402
  * that names what to prove, or a relay request that is only created.
@@ -16,8 +16,7 @@
  *    missing isIncluded -> 400 naming the problem; a valid list -> 200
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import { ethers } from 'ethers';
-import { COINBASE_COUNTRY_PUBLIC_INPUT_COUNT, COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT } from '@zkproofport-app/core';
+import { COINBASE_COUNTRY_PUBLIC_INPUT_COUNT, COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT, reduceOprfName } from '@zkproofport-app/core';
 import { authPost, publicGet } from './helpers';
 
 const field = (n: number) => '0x' + n.toString(16).padStart(64, '0');
@@ -36,7 +35,7 @@ beforeAll(async () => {
   expect(scope).toMatch(/^zkproofport-community:topic:/);
 });
 
-/** A v2-shaped Country vector over the caller's topic scope (signer root and attested_at left zero). */
+/** A v2-shaped Country vector (155 fields) over the caller's topic scope (signer root and attested_at left zero). */
 function countryInputs(countries: string[], options: { length?: number; isIncluded?: number } = {}): string[] {
   const L = COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT;
   const inputs = Array(COINBASE_COUNTRY_PUBLIC_INPUT_COUNT).fill(field(0));
@@ -46,8 +45,8 @@ function countryInputs(countries: string[], options: { length?: number; isInclud
   });
   inputs[L.COUNTRY_LIST_LENGTH] = field(options.length ?? countries.length);
   inputs[L.IS_INCLUDED] = field(options.isIncluded ?? 1);
-  Buffer.from(ethers.keccak256(ethers.toUtf8Bytes(scope)).slice(2), 'hex')
-    .forEach((byte, i) => inputs[L.SCOPE_START + i] = field(byte));
+  // One field: keccak256(scope) mod p (core's reduceOprfName).
+  inputs[L.SCOPE] = reduceOprfName(scope);
   return inputs;
 }
 

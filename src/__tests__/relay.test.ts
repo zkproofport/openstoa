@@ -9,9 +9,14 @@
  *    unset, '', 'Production', prototype keys and an unknown env throw naming the
  *    known envs, before the SDK; an explicit dappIcon is used as given.
  *  - OIDC request record: an OIDC request records { scope, circuit } under its
- *    requestId with a TTL; non-OIDC requests write nothing; a failed write fails
- *    the request (the proof could never be bound).
- *  - Coinbase Country (v2): the request records { scope, circuit, countryCondition }
+ *    requestId with a TTL; a failed write fails the request (the proof could
+ *    never be bound).
+ *  - OPRF domain (Coinbase KYC / Country): the SDK is handed OpenStoa's domain
+ *    for APP_ENV (production / staging / development / local); unset, '',
+ *    'Production', prototype keys and an unknown env throw naming the known envs
+ *    before the SDK; OIDC requests carry none. The KYC request records
+ *    { scope, circuit, oprfDomain }; a failed write fails it.
+ *  - Coinbase Country (v2): the request records { scope, circuit, oprfDomain, countryCondition }
  *    (the list exactly as asked, and isIncluded); a failed write fails it; a missing,
  *    empty, 11-code, lower-case, 3-letter, non-array list and a missing / non-boolean
  *    isIncluded are refused with RelayRequestInputError before the SDK; 1 and 10
@@ -229,7 +234,8 @@ describe('the dApp icon comes from a table keyed by APP_ENV', () => {
   it('an explicit dappIcon is used as given', async () => {
     vi.stubEnv('APP_ENV', 'unknown');
     const { createRelayProofRequest } = await import('@/lib/relay');
-    await createRelayProofRequest('s', { circuitType: 'coinbase_attestation', dappIcon: 'https://x.test/i.png' });
+    // OIDC: a wallet circuit would also need APP_ENV for its OPRF domain.
+    await createRelayProofRequest('s', { circuitType: 'oidc_domain_attestation', dappIcon: 'https://x.test/i.png' });
     expect(mockSDKInstance.createRelayRequest.mock.calls[0][2].dappIcon).toBe('https://x.test/i.png');
   });
 });
@@ -245,10 +251,10 @@ describe('an OIDC request is recorded so its proof can be bound to it', () => {
     );
   });
 
-  it('coinbase_attestation writes no record', async () => {
+  it('an OIDC request carries no OPRF domain', async () => {
     const { createRelayProofRequest } = await import('@/lib/relay');
-    await createRelayProofRequest('s', { circuitType: 'coinbase_attestation' });
-    expect(redisSet).not.toHaveBeenCalled();
+    await createRelayProofRequest('zkproofport-community', { circuitType: 'oidc_domain_attestation' });
+    expect(mockSDKInstance.createRelayRequest.mock.calls[0][1]).not.toHaveProperty('oprfDomain');
   });
 
   it('a failed record write fails the request', async () => {
@@ -278,10 +284,10 @@ describe('a Coinbase Country request carries its list as asked, and is recorded'
     const { createRelayProofRequest } = await import('@/lib/relay');
     await createRelayProofRequest('zkproofport-community:topic:u', { circuitType: 'coinbase_country_attestation', countryList, isIncluded: true });
     const [, inputs] = mockSDKInstance.createRelayRequest.mock.calls[0];
-    expect(inputs).toEqual({ scope: 'zkproofport-community:topic:u', countryList, isIncluded: true });
+    expect(inputs).toEqual({ scope: 'zkproofport-community:topic:u', oprfDomain: 'stg-community.zkproofport.app', countryList, isIncluded: true });
     expect(redisSet).toHaveBeenCalledExactlyOnceWith(
       'community:relay-request:req-123',
-      JSON.stringify({ scope: 'zkproofport-community:topic:u', circuit: 'coinbase_country_attestation', countryCondition: { countryList, isIncluded: true } }),
+      JSON.stringify({ scope: 'zkproofport-community:topic:u', circuit: 'coinbase_country_attestation', oprfDomain: 'stg-community.zkproofport.app', countryCondition: { countryList, isIncluded: true } }),
       'EX', 1800,
     );
   });
@@ -328,6 +334,47 @@ describe('a Coinbase Country request carries its list as asked, and is recorded'
   it('a country list on a KYC request is ignored, not sent', async () => {
     const { createRelayProofRequest } = await import('@/lib/relay');
     await createRelayProofRequest('s', { circuitType: 'coinbase_attestation', countryList: ['KR'], isIncluded: true });
-    expect(mockSDKInstance.createRelayRequest.mock.calls[0][1]).toEqual({ scope: 's' });
+    expect(mockSDKInstance.createRelayRequest.mock.calls[0][1]).toEqual({ scope: 's', oprfDomain: 'stg-community.zkproofport.app' });
+  });
+});
+
+describe('a Coinbase KYC request names OpenStoa\'s OPRF domain and is recorded', () => {
+  it.each([
+    ['production', 'openstoa.xyz'],
+    ['staging', 'stg-community.zkproofport.app'],
+    ['development', 'localhost'],
+    ['local', 'localhost'],
+  ])('APP_ENV %s hands the SDK %s and records it', async (env, domain) => {
+    vi.stubEnv('APP_ENV', env);
+    const { createRelayProofRequest } = await import('@/lib/relay');
+    await createRelayProofRequest('zkproofport-community:topic:u', { circuitType: 'coinbase_attestation' });
+    expect(mockSDKInstance.createRelayRequest.mock.calls[0][1]).toEqual({ scope: 'zkproofport-community:topic:u', oprfDomain: domain });
+    expect(redisSet).toHaveBeenCalledExactlyOnceWith(
+      'community:relay-request:req-123',
+      JSON.stringify({ scope: 'zkproofport-community:topic:u', circuit: 'coinbase_attestation', oprfDomain: domain }),
+      'EX', 1800,
+    );
+  });
+
+  it.each(['', 'Production', 'test', '__proto__', 'constructor'])('APP_ENV %j throws before the SDK, never filled in', async (env) => {
+    vi.stubEnv('APP_ENV', env);
+    const { createRelayProofRequest } = await import('@/lib/relay');
+    // The dApp icon is looked up first from the same APP_ENV, and throws the same way.
+    await expect(createRelayProofRequest('s', { circuitType: 'coinbase_attestation' })).rejects.toThrow(/Unknown APP_ENV/);
+    expect(mockSDKInstance.createRelayRequest).not.toHaveBeenCalled();
+    expect(redisSet).not.toHaveBeenCalled();
+  });
+
+  it('with an explicit dappIcon, an unknown APP_ENV still throws for the OPRF domain', async () => {
+    vi.stubEnv('APP_ENV', 'unknown');
+    const { createRelayProofRequest } = await import('@/lib/relay');
+    await expect(createRelayProofRequest('s', { circuitType: 'coinbase_attestation', dappIcon: 'https://x/icon.png' })).rejects.toThrow(/Unknown APP_ENV 'unknown' for the OPRF domain/);
+    expect(mockSDKInstance.createRelayRequest).not.toHaveBeenCalled();
+  });
+
+  it('a failed record write fails the request', async () => {
+    redisSet.mockRejectedValue(new Error('redis down'));
+    const { createRelayProofRequest } = await import('@/lib/relay');
+    await expect(createRelayProofRequest('s', { circuitType: 'coinbase_attestation' })).rejects.toThrow('redis down');
   });
 });

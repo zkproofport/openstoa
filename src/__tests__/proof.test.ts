@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { extractNullifier, extractScope, computeScopeHash, extractCountryCondition } from '@/lib/proof';
-import { COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT, COINBASE_COUNTRY_PUBLIC_INPUT_COUNT, COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT } from '@zkproofport-app/core';
+import { COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT, COINBASE_COUNTRY_PUBLIC_INPUT_COUNT, COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT, reduceOprfName } from '@zkproofport-app/core';
 import { countryIssuerInputs } from './fixtures/trusted-proof';
 import { ethers } from 'ethers';
 
@@ -14,71 +14,36 @@ function generateMockPublicInputs(length: number): string[] {
   return inputs;
 }
 
-// Generate publicInputs with specific bytes at nullifier/scope positions
+// A wallet credential's nullifier and scope are ONE field each (the OPRF
+// nullifier and keccak256(utf8(scope)) mod p), at core's layout offsets.
 function generateMockWithKnownValues(
   circuit: 'coinbase_attestation' | 'coinbase_country_attestation',
-  nullifierBytes: number[],
-  scopeBytes: number[],
+  nullifier: string,
+  scope: string,
 ): string[] {
-  // Each circuit's v2 layout, from core.
   const LAYOUTS = {
     coinbase_attestation: { count: COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, layout: COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT },
     coinbase_country_attestation: { count: COINBASE_COUNTRY_PUBLIC_INPUT_COUNT, layout: COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT },
   } as const;
   const { count, layout } = LAYOUTS[circuit];
   const inputs: string[] = new Array(count).fill('0x' + '00'.padStart(64, '0'));
-  const nullifierStart = layout.NULLIFIER_START;
-  const scopeStart = layout.SCOPE_START;
-
-  for (let i = 0; i < 32; i++) {
-    inputs[nullifierStart + i] =
-      '0x' + nullifierBytes[i].toString(16).padStart(64, '0');
-    inputs[scopeStart + i] =
-      '0x' + scopeBytes[i].toString(16).padStart(64, '0');
-  }
-
+  inputs[layout.NULLIFIER] = nullifier;
+  inputs[layout.SCOPE] = scope;
   return inputs;
 }
+const field = (n: bigint) => '0x' + n.toString(16).padStart(64, '0');
+const ZERO = field(0n);
 
 describe('extractNullifier', () => {
-  it('should extract nullifier from coinbase_attestation publicInputs', () => {
-    const nullifierBytes = Array.from({ length: 32 }, (_, i) => (i + 1) % 256);
-    const scopeBytes = Array.from({ length: 32 }, () => 0);
-    const inputs = generateMockWithKnownValues(
-      'coinbase_attestation',
-      nullifierBytes,
-      scopeBytes,
-    );
-
-    const nullifier = extractNullifier(inputs, 'coinbase_attestation');
-
-    // Should be a 0x-prefixed hex string of 32 bytes
-    expect(nullifier).toMatch(/^0x[0-9a-f]{64}$/);
-
-    // Verify reconstructed bytes match
-    const expectedHex =
-      '0x' +
-      nullifierBytes.map((b) => b.toString(16).padStart(2, '0')).join('');
-    expect(nullifier).toBe(expectedHex);
+  it.each(['coinbase_attestation', 'coinbase_country_attestation'] as const)('reads the OPRF nullifier field of %s, as 0x + 64 hex', (circuit) => {
+    const nullifier = field(0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdefn);
+    const inputs = generateMockWithKnownValues(circuit, nullifier, ZERO);
+    expect(extractNullifier(inputs, circuit)).toBe(nullifier);
   });
 
-  it('should extract nullifier from coinbase_country_attestation publicInputs', () => {
-    const nullifierBytes = Array.from({ length: 32 }, (_, i) => (i + 10) % 256);
-    const scopeBytes = Array.from({ length: 32 }, () => 0);
-    const inputs = generateMockWithKnownValues(
-      'coinbase_country_attestation',
-      nullifierBytes,
-      scopeBytes,
-    );
-
-    const nullifier = extractNullifier(inputs, 'coinbase_country_attestation');
-
-    expect(nullifier).toMatch(/^0x[0-9a-f]{64}$/);
-
-    const expectedHex =
-      '0x' +
-      nullifierBytes.map((b) => b.toString(16).padStart(2, '0')).join('');
-    expect(nullifier).toBe(expectedHex);
+  it.each(['coinbase_attestation', 'coinbase_country_attestation'] as const)('a %s nullifier at or above the field modulus is refused, not read', (circuit) => {
+    const P = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+    expect(() => extractNullifier(generateMockWithKnownValues(circuit, field(P), ZERO), circuit)).toThrow();
   });
 
   it('should throw for unsupported circuit', () => {
@@ -104,13 +69,7 @@ describe('extractNullifier', () => {
   });
 
   it('should produce deterministic results', () => {
-    const nullifierBytes = Array.from({ length: 32 }, (_, i) => i);
-    const scopeBytes = Array.from({ length: 32 }, () => 0);
-    const inputs = generateMockWithKnownValues(
-      'coinbase_attestation',
-      nullifierBytes,
-      scopeBytes,
-    );
+    const inputs = generateMockWithKnownValues('coinbase_attestation', field(42n), ZERO);
 
     const result1 = extractNullifier(inputs, 'coinbase_attestation');
     const result2 = extractNullifier(inputs, 'coinbase_attestation');
@@ -119,40 +78,10 @@ describe('extractNullifier', () => {
 });
 
 describe('extractScope', () => {
-  it('should extract scope from coinbase_attestation publicInputs', () => {
-    const nullifierBytes = Array.from({ length: 32 }, () => 0);
-    const scopeBytes = Array.from({ length: 32 }, (_, i) => (i + 5) % 256);
-    const inputs = generateMockWithKnownValues(
-      'coinbase_attestation',
-      nullifierBytes,
-      scopeBytes,
-    );
-
-    const scope = extractScope(inputs, 'coinbase_attestation');
-
-    expect(scope).toMatch(/^0x[0-9a-f]{64}$/);
-
-    const expectedHex =
-      '0x' + scopeBytes.map((b) => b.toString(16).padStart(2, '0')).join('');
-    expect(scope).toBe(expectedHex);
-  });
-
-  it('should extract scope from coinbase_country_attestation publicInputs', () => {
-    const nullifierBytes = Array.from({ length: 32 }, () => 0);
-    const scopeBytes = Array.from({ length: 32 }, (_, i) => (i + 20) % 256);
-    const inputs = generateMockWithKnownValues(
-      'coinbase_country_attestation',
-      nullifierBytes,
-      scopeBytes,
-    );
-
-    const scope = extractScope(inputs, 'coinbase_country_attestation');
-
-    expect(scope).toMatch(/^0x[0-9a-f]{64}$/);
-
-    const expectedHex =
-      '0x' + scopeBytes.map((b) => b.toString(16).padStart(2, '0')).join('');
-    expect(scope).toBe(expectedHex);
+  it.each(['coinbase_attestation', 'coinbase_country_attestation'] as const)('reads the scope field of %s: keccak256(scope) mod p', (circuit) => {
+    const scope = reduceOprfName('zkproofport-community:topic:alice');
+    const inputs = generateMockWithKnownValues(circuit, ZERO, scope);
+    expect(extractScope(inputs, circuit)).toBe(scope);
   });
 
   it('should throw for unsupported circuit', () => {
@@ -226,9 +155,10 @@ describe('extractCountryCondition', () => {
     );
   });
 
-  it('refuses a v1 (150-input) vector by its count', () => {
-    expect(() => extractCountryCondition(countryIssuerInputs().slice(0, 150), 'coinbase_country_attestation')).toThrow(
-      /Expected 215 public inputs; got 150/,
+  it.each([90, 150, 215])('refuses an earlier %i-input vector by its count', (n) => {
+    const inputs = [...countryIssuerInputs(), ...Array(80).fill(ZERO)].slice(0, n);
+    expect(() => extractCountryCondition(inputs, 'coinbase_country_attestation')).toThrow(
+      new RegExp(`Expected 155 public inputs; got ${n}`),
     );
   });
 });

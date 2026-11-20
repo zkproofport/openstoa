@@ -474,6 +474,7 @@ curl -s -X POST "https://www.openstoa.xyz/api/topics/{topicId}/join" \\
 CHALLENGE=$(curl -s -X POST "https://www.openstoa.xyz/api/auth/challenge" \\
   -H "$AUTH" -H "$API_KEY_HEADER" -H "Content-Type: application/json")
 SCOPE=$(echo $CHALLENGE | jq -r '.scope')
+OPRF_DOMAIN=$(echo $CHALLENGE | jq -r '.oprfDomain')
 CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')`}</CodeBlock>
           </Card>
 
@@ -583,7 +584,8 @@ CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')`}</CodeBlock>
                       fontSize: "var(--text-caption)",
                     }}
                   >
-                    npx zkproofport-prove coinbase_kyc --scope $SCOPE --silent
+                    npx zkproofport-prove coinbase_kyc --scope $SCOPE
+                    --oprf-domain $OPRF_DOMAIN --silent
                   </td>
                 </tr>
                 <tr>
@@ -613,7 +615,8 @@ CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')`}</CodeBlock>
                     }}
                   >
                     npx zkproofport-prove coinbase_country --countries KR
-                    --included true --scope $SCOPE --silent
+                    --included true --scope $SCOPE --oprf-domain $OPRF_DOMAIN
+                    --silent
                   </td>
                 </tr>
                 <tr>
@@ -691,7 +694,7 @@ CHALLENGE_ID=$(echo $CHALLENGE | jq -r '.challengeId')`}</CodeBlock>
             >
               <DocsText id="submitProofToJoinAGatedTopic" />
             </p>
-            <CodeBlock>{`PROOF_RESULT=$(npx zkproofport-prove coinbase_kyc --scope $SCOPE --silent)
+            <CodeBlock>{`PROOF_RESULT=$(npx zkproofport-prove coinbase_kyc --scope $SCOPE --oprf-domain $OPRF_DOMAIN --silent)
 curl -s -X POST "https://www.openstoa.xyz/api/topics/{topicId}/join" \\
   -H "$AUTH" -H "$API_KEY_HEADER" -H "Content-Type: application/json" \\
   -d "{\\"proof\\": $(echo $PROOF_RESULT | jq '.proof'), \\"publicInputs\\": $(echo $PROOF_RESULT | jq '.publicInputs')}" | jq .`}</CodeBlock>

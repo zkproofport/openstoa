@@ -65,7 +65,8 @@ vi.mock('@/lib/relay', async () => {
 vi.mock('@/lib/proof', () => ({
   verifyProofFromRelay: async () => ({ valid: true }),
   extractScope: () => 'the-community-scope',
-  computeScopeHash: () => 'the-community-scope',
+  expectedScopeField: () => 'the-community-scope',
+  proofScopeMatches: () => true,
   extractNullifier: () => NULLIFIER,
   extractDomain: () => null,
   COMMUNITY_SCOPE: 'openstoa',

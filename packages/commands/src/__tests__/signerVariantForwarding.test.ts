@@ -11,27 +11,29 @@
  * Real Commands + ChatClient; the network is the fetch boundary.
  */
 import {afterEach,expect,it,vi} from 'vitest';
+import {reduceOprfName} from '@zkproofport-app/core';
 import {ChatClient} from '@masselabs/openstoa';
 import {Commands} from '../commands';
 import {MemorySessionStore} from '../session';
 import {MemoryProofOperationStore} from '../topicProofWorkflow';
 afterEach(()=>vi.restoreAllMocks());
 const scope='zkproofport-community:topic:alice';
-const scopeHash='0x54397129f0b3b0e5c469a48458023d6386775b7f54c34ae43fb6b09fc47d4ecf';
+// A Coinbase proof's scope is keccak256(scope) mod p (core's reduceOprfName).
+const scopeHash=reduceOprfName('zkproofport-community:topic:alice');
 const kinds=['create','join','invite'] as const;
 const VARIANTS=['standard','android','android_factory'] as const;
 const UNKNOWN:unknown[]=['ios','','ANDROID',' android','android\n','аndroid','__proto__','toString','android'.repeat(10),42,null,{},['android'],true];
 const proof='0xaabb';
-const publicInputs='0x'+'01'.padStart(64,'0').repeat(193);
+const publicInputs='0x'+'01'.padStart(64,'0').repeat(133);
 function fixture(kind:typeof kinds[number],poll:Record<string,unknown>={}){
  const original=kind==='create'?'/api/topics':kind==='join'?'/api/topics/t1/join':'/api/topics/join/code';
  let businessStatus=402;
  const fetch=vi.fn(async(url:string|URL,_init?:RequestInit)=>{
   const path=new URL(url).pathname;
-  if(path===original)return new Response(JSON.stringify(businessStatus===402?{proofScope:scope,proofRequirement:{type:'kyc',circuit:'coinbase_attestation'}}:{topic:{id:'created'},joined:true,topicId:'t1'}),{status:businessStatus});
+  if(path===original)return new Response(JSON.stringify(businessStatus===402?{proofScope:scope,proofRequirement:{type:'kyc',circuit:'coinbase_attestation',oprfDomain:'stg-community.zkproofport.app'}}:{topic:{id:'created'},joined:true,topicId:'t1'}),{status:businessStatus});
   if(path==='/api/auth/challenge')return Response.json({scope});
   if(path==='/api/auth/proof-request')return Response.json({requestId:'request-1',deepLink:'zkproofport://proof-request?data=x',scope,circuitType:'coinbase_attestation'});
-  if(path==='/api/auth/poll/request-1')return Response.json({status:'completed',circuit:'coinbase_attestation',scopeHash,proof,publicInputs:Array(193).fill('0x'+'01'.padStart(64,'0')),...poll});
+  if(path==='/api/auth/poll/request-1')return Response.json({status:'completed',circuit:'coinbase_attestation',scopeHash,proof,publicInputs:Array(133).fill('0x'+'01'.padStart(64,'0')),...poll});
   throw new Error('Unexpected test route '+path);
  });
  const chat=new ChatClient({baseUrl:'https://openstoa.test',token:'session-fixture',apiKey:'osk_fixture',fetch:fetch as typeof globalThis.fetch});

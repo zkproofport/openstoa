@@ -1,8 +1,8 @@
 'use client';
 
 import {useEffect, useRef, useState} from 'react';
-import {keccak256, toUtf8Bytes} from 'ethers';
 import {apiFetch} from '@/lib/apiFetch';
+import {scopeFieldMatches} from '@/lib/proofScopeField';
 import {parseHumanProofFragment, HUMAN_PROOF_CIRCUITS, type HumanProofRequest} from '@/lib/humanProofFragment';
 import {useTranslation} from '@/lib/i18n/I18nProvider';
 import LocaleSwitcher from '@/components/LocaleSwitcher';
@@ -45,8 +45,8 @@ export default function HumanProofPage({relayOrigin}: {relayOrigin: string}) {
           const data=await response.json();
           if(stopped)return;
           if(data.status==='completed'){
-            const expected=keccak256(toUtf8Bytes(parsed.scope));
-            finish(data.circuit===parsed.circuitType && typeof data.scopeHash==='string' && data.scopeHash.toLowerCase()===expected.toLowerCase() ? 'completed':'failed');
+            // Per circuit: keccak256(scope) for OIDC, keccak256(scope) mod p for a wallet credential.
+            finish(data.circuit===parsed.circuitType && scopeFieldMatches(data.scopeHash,parsed.scope,parsed.circuitType) ? 'completed':'failed');
             return;
           }
           if(data.status==='cancelled'||data.status==='expired'||data.status==='failed'){finish(data.status);return;}

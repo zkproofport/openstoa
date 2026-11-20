@@ -1,6 +1,7 @@
 import {authorizeApiRequest} from '@/lib/apiAuthorization';
 import { getSession } from '@/lib/session';
 import { topicProofScope } from '@/lib/topic-proof';
+import { oprfSettingsFor } from '@/lib/oprfDomain';
 import { NextRequest, NextResponse } from 'next/server';
 import { createChallenge } from '@/lib/challenge';
 import { logger } from '@/lib/logger';
@@ -39,7 +40,14 @@ const ROUTE = '/api/auth/challenge';
  *                   description: Unique challenge identifier
  *                 scope:
  *                   type: string
- *                   description: Scope string that must be included in the ZK proof
+ *                   description: Scope string that must be included in the ZK proof (`--scope` for the prover CLI)
+ *                 oprfDomain:
+ *                   type: string
+ *                   description: >-
+ *                     Present on an authenticated topic-proof challenge. The OPRF domain a Coinbase KYC or
+ *                     Country proof's nullifier is keyed by, beside `scope`: pass it as `--oprf-domain` to
+ *                     `zkproofport-prove coinbase_kyc` / `coinbase_country`. A proof made for another domain is
+ *                     refused. OIDC (Google / Microsoft) proofs do not use it.
  *                 expiresIn:
  *                   type: number
  *                   description: Seconds until the challenge expires
@@ -58,7 +66,11 @@ export async function POST(request: NextRequest) {
     if (purpose !== undefined && purpose !== 'login' && purpose !== 'topic') return NextResponse.json({error:'purpose must be login or topic'}, {status:400});
     const challenge = await createChallenge();
     const session = await getSession(request);
-    if (session && purpose !== 'login') challenge.scope = topicProofScope(session.userId);
+    if (session && purpose !== 'login') {
+      challenge.scope = topicProofScope(session.userId);
+      logger.info(ROUTE, 'Challenge created', { challengeId: challenge.challengeId });
+      return NextResponse.json({ ...challenge, oprfDomain: oprfSettingsFor(process.env.APP_ENV).domain });
+    }
     logger.info(ROUTE, 'Challenge created', { challengeId: challenge.challengeId });
     return NextResponse.json(challenge);
   } catch (error) {

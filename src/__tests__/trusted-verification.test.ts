@@ -1,10 +1,13 @@
 /**
- * verifyTrustedTopicProof / verifyProofFromRelay on @zkproofport-app/core 0.3.0
- * (OIDC v2: 214 public inputs, audience / nonce / now policy).
+ * verifyTrustedTopicProof / verifyProofFromRelay on @zkproofport-app/core 0.4.0-beta.9
+ * (OIDC v2: 214 public inputs, audience / nonce / now policy; Coinbase KYC v2 133
+ * and Country v2 155 with the OPRF nullifier; mainnet verifiers awaiting a redeploy).
  *
  * Edge matrix (each row maps to a test below):
- *  - environment: production / staging / development / local route each circuit to
- *    its chain and core's pinned verifier; unset, unknown, prototype keys refused.
+ *  - environment: staging / development / local route each circuit to its chain and
+ *    core's pinned verifier; production refuses every circuit by name while core
+ *    holds its mainnet verifiers as awaiting a redeploy; unset, unknown, prototype
+ *    keys refused.
  *  - circuit: the three accepted ids; unknown, empty, prototype keys, core circuits
  *    OpenStoa does not accept (giwa_attestation, dojang_playground) and the removed
  *    Korea Mobile ID ids (mdl_kr_*) refused naming the known ids.
@@ -28,18 +31,20 @@
  *  - relay results: an OIDC result verifies only against the request OpenStoa
  *    recorded for the POLLED id (not the id the result carries); no record, a
  *    corrupt record, a record for another circuit, and Redis down are all refused /
- *    rejected, never verified without the request; non-OIDC results read no record.
+ *    rejected, never verified without the request. A Coinbase KYC result is
+ *    verified against its record too (signal_hash, OPRF domain, scope).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ethers as realEthers } from 'ethers';
 import {
   clearOidcKeyCache,
   getPinnedVerifier,
+  COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT,
   OIDC_PUBLIC_INPUT_COUNT,
   SIGNER_ROOT_LAYOUTS,
   RPC_ENDPOINTS,
 } from '@zkproofport-app/core';
-import { coinbaseIssuerInputs, countryIssuerInputs, oidcIssuerInputs, testJwk, jwksFetch, encodedBool, proofField, OIDC_AUDIENCES } from './fixtures/trusted-proof';
+import { coinbaseIssuerInputs, countryIssuerInputs, oidcIssuerInputs, testJwk, jwksFetch, encodedBool, proofField, OIDC_AUDIENCES, STAGING_OPRF_DOMAIN } from './fixtures/trusted-proof';
 
 const state = vi.hoisted(() => ({
   providers: [] as string[],
@@ -70,16 +75,18 @@ import {
   verifyProofFromRelay,
   VERIFICATION_CHAINS,
   PUBLIC_INPUT_COUNTS,
+  OPRF_SETTINGS,
   type VerifiableCircuit,
 } from '@/lib/proof';
 
 const CIRCUITS = Object.keys(PUBLIC_INPUT_COUNTS) as VerifiableCircuit[];
 const KR = { countryList: ['KR'], isIncluded: true };
-const ENVIRONMENTS = ['production', 'staging', 'development', 'local'];
+const TESTNET_ENVIRONMENTS = ['staging', 'development', 'local'];
+const STAGING_KYC_VERIFIER = '0xe78fcdc7562ce3afceadaf29f4b8b96dc997c01a';
 
-function validInputs(circuit: VerifiableCircuit): string[] {
-  if (circuit === 'coinbase_attestation') return coinbaseIssuerInputs(193);
-  if (circuit === 'coinbase_country_attestation') return countryIssuerInputs({ countries: ['KR'] });
+function validInputs(circuit: VerifiableCircuit, oprfDomain = STAGING_OPRF_DOMAIN): string[] {
+  if (circuit === 'coinbase_attestation') return coinbaseIssuerInputs(COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, { oprfDomain });
+  if (circuit === 'coinbase_country_attestation') return countryIssuerInputs({ countries: ['KR'], oprfDomain });
   if (circuit === 'oidc_domain_attestation') return oidcIssuerInputs();
   throw new Error(`No fixture for circuit '${circuit}'. Known: ${CIRCUITS.join(', ')}.`);
 }
@@ -97,11 +104,11 @@ beforeEach(() => {
 });
 
 describe('environment and circuit select core\'s pinned verifier', () => {
-  const rows = ENVIRONMENTS.flatMap((env) => CIRCUITS.map((circuit) => [env, circuit] as const));
+  const rows = TESTNET_ENVIRONMENTS.flatMap((env) => CIRCUITS.map((circuit) => [env, circuit] as const));
   it.each(rows)('%s / %s calls the pinned verifier on its chain', async (env, circuit) => {
     vi.stubEnv('APP_ENV', env);
     const chainId = VERIFICATION_CHAINS[env][circuit];
-    const result = await verifyTrustedTopicProof(circuit, '0xab', validInputs(circuit), undefined, undefined, undefined,
+    const result = await verifyTrustedTopicProof(circuit, '0xab', validInputs(circuit, OPRF_SETTINGS[env].domain), undefined, undefined, undefined,
       circuit === 'coinbase_country_attestation' ? KR : undefined);
     expect(result).toEqual({ valid: true });
     expect(state.providers).toEqual([RPC_ENDPOINTS[chainId]]);
@@ -109,16 +116,20 @@ describe('environment and circuit select core\'s pinned verifier', () => {
     expect(state.calls[0].to).toBe(getPinnedVerifier(circuit, chainId).address);
   });
 
-  it('production Coinbase KYC is the Base mainnet v2 verifier, staging the Base Sepolia v2 one', async () => {
+  // core 0.4.0-beta.9 pins no mainnet verifier for the bb 6.0.0 builds: every
+  // production verification is refused by name, before any contract call.
+  it.each(CIRCUITS)('production / %s is refused while its mainnet verifier awaits a redeploy', async (circuit) => {
     vi.stubEnv('APP_ENV', 'production');
+    const result = await verifyTrustedTopicProof(circuit, '0xab', validInputs(circuit, OPRF_SETTINGS.production.domain), undefined, undefined, undefined,
+      circuit === 'coinbase_country_attestation' ? KR : undefined);
+    expect(result.valid).toBe(false);
+    expect(state.calls).toHaveLength(0);
+  });
+
+  it('staging Coinbase KYC is the Base Sepolia v2 verifier core pins', async () => {
     await verifyTrustedTopicProof('coinbase_attestation', '0xab', validInputs('coinbase_attestation'));
-    vi.stubEnv('APP_ENV', 'staging');
-    await verifyTrustedTopicProof('coinbase_attestation', '0xab', validInputs('coinbase_attestation'));
-    expect(state.providers).toEqual(['https://mainnet.base.org', 'https://sepolia.base.org']);
-    expect(state.calls.map((c) => c.to)).toEqual([
-      '0x6fc22d3576fb70457d1529b3f70f711a3cba7a7f',
-      '0x1885aa2283db21ad0fc63a2df98efe92f31908e6',
-    ]);
+    expect(state.providers).toEqual(['https://sepolia.base.org']);
+    expect(state.calls.map((c) => c.to)).toEqual([STAGING_KYC_VERIFIER]);
   });
 
   it.each([undefined, '', 'unknown', 'Production', '__proto__', 'constructor', 'toString'])(
@@ -169,7 +180,9 @@ describe('public inputs and proof bytes are checked before any network call', ()
 
 describe('issuer anchors are checked by core before the contract', () => {
   it('a Coinbase proof over a signer root of the prover\'s choosing is refused', async () => {
-    const result = await verifyTrustedTopicProof('coinbase_attestation', '0xab', Array(193).fill(proofField(0)));
+    const inputs = validInputs('coinbase_attestation');
+    for (let i = 96; i < 128; i++) inputs[i] = proofField(0);
+    const result = await verifyTrustedTopicProof('coinbase_attestation', '0xab', inputs);
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/signer-list root/);
     expect(state.calls).toHaveLength(0);
@@ -229,37 +242,45 @@ describe('issuer anchors are checked by core before the contract', () => {
 });
 
 describe('the relay\'s verifier claim is compared, never used', () => {
+  // A Coinbase KYC result is verified against OpenStoa's record of the request.
+  const RELAY_ID = '3c2b1a09-8f7e-4d6c-9b5a-4f3e2d1c0b9a';
   const relayResult = (extra: Record<string, unknown>) => ({
-    requestId: 'r', status: 'completed', circuit: 'coinbase_attestation', proof: '0xab',
-    publicInputs: validInputs('coinbase_attestation'), ...extra,
+    requestId: RELAY_ID, status: 'completed', circuit: 'coinbase_attestation', proof: '0xab',
+    publicInputs: coinbaseIssuerInputs(COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, { requestId: RELAY_ID }), ...extra,
   }) as never;
+  beforeEach(() => {
+    store.data.set(`community:relay-request:${RELAY_ID}`, JSON.stringify({
+      scope: 'zkproofport-community', circuit: 'coinbase_attestation', oprfDomain: STAGING_OPRF_DOMAIN,
+    }));
+  });
 
   it('a differing verifierAddress is refused without a call', async () => {
-    const result = await verifyProofFromRelay(relayResult({ verifierAddress: '0x000000000000000000000000000000000000dEaD', chainId: 84532 }), 'r');
+    const result = await verifyProofFromRelay(relayResult({ verifierAddress: '0x000000000000000000000000000000000000dEaD', chainId: 84532 }), RELAY_ID);
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/Refusing rather than trusting the response/);
     expect(state.calls).toHaveLength(0);
   });
 
   it('a differing chainId is refused without a call', async () => {
-    const result = await verifyProofFromRelay(relayResult({ verifierAddress: '0x1885aA2283DB21ad0fc63A2Df98efe92F31908E6', chainId: 8453 }), 'r');
+    const result = await verifyProofFromRelay(relayResult({ verifierAddress: '0xE78fcdc7562cE3afCEadaF29f4b8B96Dc997C01a', chainId: 8453 }), RELAY_ID);
     expect(result.valid).toBe(false);
     expect(state.calls).toHaveLength(0);
   });
 
   it('the pinned address in checksum case is accepted', async () => {
-    expect(await verifyProofFromRelay(relayResult({ verifierAddress: '0x1885aA2283DB21ad0fc63A2Df98efe92F31908E6', chainId: 84532 }), 'r')).toEqual({ valid: true });
-    expect(state.calls[0].to).toBe('0x1885aa2283db21ad0fc63a2df98efe92f31908e6');
+    const result = await verifyProofFromRelay(relayResult({ verifierAddress: '0xE78fcdc7562cE3afCEadaF29f4b8B96Dc997C01a', chainId: 84532 }), RELAY_ID);
+    expect(result.valid).toBe(true);
+    expect(state.calls[0].to).toBe(STAGING_KYC_VERIFIER);
   });
 
   it('no claim at all is accepted and verified on the pinned verifier', async () => {
-    expect((await verifyProofFromRelay(relayResult({}), 'r')).valid).toBe(true);
+    expect((await verifyProofFromRelay(relayResult({}), RELAY_ID)).valid).toBe(true);
     expect(state.calls).toHaveLength(1);
   });
 
   it.each([['circuit', undefined], ['circuit', ''], ['proof', undefined], ['publicInputs', undefined]])(
     'a result with no %s is refused', async (field, value) => {
-      expect((await verifyProofFromRelay(relayResult({ [field]: value }), 'r')).valid).toBe(false);
+      expect((await verifyProofFromRelay(relayResult({ [field]: value }), RELAY_ID)).valid).toBe(false);
       expect(state.calls).toHaveLength(0);
     });
 
@@ -268,7 +289,7 @@ describe('the relay\'s verifier claim is compared, never used', () => {
     const result = await verifyProofFromRelay(relayResult({
       circuit, publicInputs: Array(96).fill(proofField(0)),
       verifierAddress: '0x044116dF792eB424c9648DF2DeEda97aFa617Ac0', chainId: 84532,
-    }), 'r');
+    }), RELAY_ID);
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/Unsupported verifier circuit .*Known: coinbase_attestation, coinbase_country_attestation, oidc_domain_attestation\./);
     expect(state.calls).toHaveLength(0);
@@ -310,10 +331,18 @@ describe('integrity against core', () => {
       expect(Object.keys(VERIFICATION_CHAINS[env]).sort()).toEqual([...CIRCUITS].sort());
       for (const circuit of CIRCUITS) {
         const chainId = VERIFICATION_CHAINS[env][circuit];
-        expect(() => getPinnedVerifier(circuit, chainId)).not.toThrow();
+        // Production: pinned, or held by core as awaiting a redeploy -- never another chain's.
+        if (env === 'production') {
+          try { getPinnedVerifier(circuit, chainId); } catch (error) { expect(String(error)).toMatch(/awaits a redeploy/); }
+        } else {
+          expect(() => getPinnedVerifier(circuit, chainId)).not.toThrow();
+        }
         expect(RPC_ENDPOINTS[chainId]).toBeTruthy();
       }
     }
+  });
+  it('every verification environment has an OPRF domain and key environment, and nothing else does', () => {
+    expect(Object.keys(OPRF_SETTINGS).sort()).toEqual(Object.keys(VERIFICATION_CHAINS).sort());
   });
 });
 
@@ -446,12 +475,13 @@ describe('an OIDC relay result is verified against the request OpenStoa recorded
     expect(state.calls).toHaveLength(0);
   });
 
-  it('a non-OIDC result reads no record', async () => {
-    store.down = true;
+  it('a Coinbase KYC result reads its record too: with none it is refused', async () => {
     const result = await verifyProofFromRelay({
-      requestId: 'r', status: 'completed', circuit: 'coinbase_attestation', proof: '0xab',
-      publicInputs: validInputs('coinbase_attestation'),
-    } as never, 'r');
-    expect(result).toEqual({ valid: true });
+      requestId: REQUEST_ID, status: 'completed', circuit: 'coinbase_attestation', proof: '0xab',
+      publicInputs: coinbaseIssuerInputs(COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, { requestId: REQUEST_ID }),
+    } as never, REQUEST_ID);
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/no record of relay request/);
+    expect(state.calls).toHaveLength(0);
   });
 });

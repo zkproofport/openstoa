@@ -1,25 +1,57 @@
 import { ethers } from 'ethers';
-import { COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT, COINBASE_COUNTRY_PUBLIC_INPUT_COUNT, COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT, deriveOidcNonceBinding, OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT, OIDC_PUBLIC_INPUT_COUNT } from '@zkproofport-app/core';
+import { COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT, COINBASE_COUNTRY_PUBLIC_INPUT_COUNT, COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT, computeSignalHash, deriveOidcNonceBinding, OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT, OIDC_PUBLIC_INPUT_COUNT, reduceOprfName, TACEO_TESTNET_OPRF_KEY_HASH } from '@zkproofport-app/core';
 export const proofField = (n: number | bigint) => '0x' + n.toString(16).padStart(64, '0');
-const COINBASE_LAYOUTS_BY_COUNT: Record<number, { MERKLE_ROOT_START: number; ATTESTED_AT: number }> = {
-  [COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT]: COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT,
-  [COINBASE_COUNTRY_PUBLIC_INPUT_COUNT]: COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT,
+interface CoinbaseLayout {
+  circuit: 'coinbase_attestation' | 'coinbase_country_attestation';
+  MERKLE_ROOT_START: number; OPRF_KEY_HASH: number; OPRF_DOMAIN: number; SCOPE: number; NULLIFIER: number; ATTESTED_AT: number;
+}
+const COINBASE_LAYOUTS_BY_COUNT: Record<number, CoinbaseLayout> = {
+  [COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT]: { circuit: 'coinbase_attestation', ...COINBASE_ATTESTATION_PUBLIC_INPUT_LAYOUT },
+  [COINBASE_COUNTRY_PUBLIC_INPUT_COUNT]: { circuit: 'coinbase_country_attestation', ...COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT },
 };
 const COINBASE_SIGNER_ROOT = 'b60da9815c76261b61a1e91f199de5845fc171a6500e57c4240d2ac61d85e2bf';
+/** The OPRF domain OpenStoa names on staging (OPRF_SETTINGS); the fixtures' default. */
+export const STAGING_OPRF_DOMAIN = 'stg-community.zkproofport.app';
+/** A field-sized nullifier, standing in for an OPRF output. */
+export const TEST_OPRF_NULLIFIER = proofField(0x2a2a2an);
+export interface CoinbaseInputOptions {
+  /** The scope string; written as keccak256(utf8) mod p. Default 'zkproofport-community'. */
+  scope?: string;
+  /** The OPRF domain string; written as keccak256(utf8) mod p. Default STAGING_OPRF_DOMAIN. */
+  oprfDomain?: string;
+  /** The OPRF key hash. Default: the testnet key core pins for staging / local. */
+  oprfKeyHash?: string;
+  nullifier?: string;
+  /** When given, signal_hash (0-31) = computeSignalHash of this request; zero otherwise. */
+  requestId?: string;
+}
+function writeBytes(inputs: string[], start: number, hex: string): void {
+  Buffer.from(hex.replace(/^0x/, ''), 'hex').forEach((byte, i) => inputs[start + i] = proofField(byte));
+}
 /**
- * Coinbase issuer inputs carrying the published Coinbase signer root and
- * attested_at = the clock (core holds it to a 15-minute window), at each v2
- * circuit's offsets: 193 = Coinbase KYC v2 (root 96-127, attested_at 192),
- * 215 = Coinbase Country v2 (root 96-127, attested_at 214; see
+ * Coinbase issuer inputs at each v2 circuit's offsets (core's layouts):
+ * the published Coinbase signer root, the OPRF key hash / domain / scope /
+ * nullifier fields, and attested_at = the clock (core holds it to a 15-minute
+ * window). 133 = Coinbase KYC v2, 155 = Coinbase Country v2 (see
  * countryIssuerInputs for its list). Any other length keeps the root at 32,
  * a shape core refuses.
  */
-export function coinbaseIssuerInputs(length = COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT): string[] {
+export function coinbaseIssuerInputs(length = COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, options: CoinbaseInputOptions = {}): string[] {
   const inputs = Array(length).fill(proofField(0));
   const layout = Object.hasOwn(COINBASE_LAYOUTS_BY_COUNT, length) ? COINBASE_LAYOUTS_BY_COUNT[length] : undefined;
   const rootStart = layout ? layout.MERKLE_ROOT_START : 32;
-  Buffer.from(COINBASE_SIGNER_ROOT, 'hex').forEach((n, i) => inputs[rootStart + i] = proofField(n));
-  if (layout) inputs[layout.ATTESTED_AT] = proofField(Math.floor(Date.now() / 1000));
+  writeBytes(inputs, rootStart, COINBASE_SIGNER_ROOT);
+  if (layout) {
+    const scope = options.scope ?? 'zkproofport-community';
+    inputs[layout.OPRF_KEY_HASH] = options.oprfKeyHash ?? TACEO_TESTNET_OPRF_KEY_HASH;
+    inputs[layout.OPRF_DOMAIN] = reduceOprfName(options.oprfDomain ?? STAGING_OPRF_DOMAIN);
+    inputs[layout.SCOPE] = reduceOprfName(scope);
+    inputs[layout.NULLIFIER] = options.nullifier ?? TEST_OPRF_NULLIFIER;
+    inputs[layout.ATTESTED_AT] = proofField(Math.floor(Date.now() / 1000));
+    if (options.requestId !== undefined) {
+      writeBytes(inputs, 0, computeSignalHash({ scope, circuitId: layout.circuit, requestId: options.requestId }));
+    }
+  }
   return inputs;
 }
 export interface CountryInputOptions {
@@ -29,17 +61,16 @@ export interface CountryInputOptions {
   length?: number;
   /** is_included; defaults to 1. */
   isIncluded?: number;
-  /** The scope string whose keccak256 is written at 150-181. */
-  scope?: string;
 }
 /**
- * A Coinbase Country v2 public-input vector (215 fields) that passes core's
- * issuer check: the Coinbase signer root, a fresh attested_at, and the list,
- * length, inclusion flag and scope hash at COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT.
+ * A Coinbase Country v2 public-input vector (155 fields) that passes core's
+ * issuer check: the Coinbase signer root, the OPRF fields, a fresh
+ * attested_at, and the list, length and inclusion flag at
+ * COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT.
  */
-export function countryIssuerInputs(options: CountryInputOptions = {}): string[] {
+export function countryIssuerInputs(options: CountryInputOptions & CoinbaseInputOptions = {}): string[] {
   const L = COINBASE_COUNTRY_PUBLIC_INPUT_LAYOUT;
-  const inputs = coinbaseIssuerInputs(COINBASE_COUNTRY_PUBLIC_INPUT_COUNT);
+  const inputs = coinbaseIssuerInputs(COINBASE_COUNTRY_PUBLIC_INPUT_COUNT, options);
   const countries = options.countries ?? ['KR'];
   countries.forEach((code, slot) => {
     inputs[L.COUNTRY_LIST_START + 2 * slot] = proofField(code.charCodeAt(0));
@@ -47,7 +78,6 @@ export function countryIssuerInputs(options: CountryInputOptions = {}): string[]
   });
   inputs[L.COUNTRY_LIST_LENGTH] = proofField(options.length ?? countries.length);
   inputs[L.IS_INCLUDED] = proofField(options.isIncluded ?? 1);
-  keccakBytes(options.scope ?? 'zkproofport-community').forEach((byte, i) => inputs[L.SCOPE_START + i] = proofField(byte));
   return inputs;
 }
 // `issuer` is the template Microsoft attaches to multi-tenant keys; core

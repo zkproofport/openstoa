@@ -1,3 +1,6 @@
+import { oprfSettingsFor } from './oprfDomain';
+import { isOprfCircuit } from './proofScopeField';
+
 /**
  * Static proof guide content for each proof type.
  * Used in 402 responses and /api/docs/proof-guide/{proofType} endpoint.
@@ -112,10 +115,15 @@ function makeProofEndpoint(
         exampleResponse: {
           challengeId: 'abc123-uuid',
           scope: TOPIC_SCOPE_EXAMPLE,
+          oprfDomain: '<OpenStoa OPRF domain>',
           expiresIn: 300,
         },
       },
-      proveCommand: `zkproofport-prove ${proveFlag} --scope $SCOPE --silent`,
+      // A wallet credential's nullifier is keyed by the OPRF domain beside the
+      // scope; the challenge returns both. OIDC proofs take no domain.
+      proveCommand: isOprfCircuit(circuitType)
+        ? `zkproofport-prove ${proveFlag} --scope $SCOPE --oprf-domain $OPRF_DOMAIN --silent`
+        : `zkproofport-prove ${proveFlag} --scope $SCOPE --silent`,
       joinEndpoint: {
         method: 'POST',
         url: `${BASE_URL}/api/topics/{topicId}/join`,
@@ -190,16 +198,17 @@ export const PROOF_GUIDES: Record<string, ProofGuide> = {
         {
           step: 1,
           title: 'Get Challenge',
-          description: 'Use your login session and API key on the challenge request and use its account-bound scope exactly. Do not use the login scope or topic ID. Topic join does not submit challengeId.',
+          description: 'Use your login session and API key on the challenge request and use its account-bound scope and oprfDomain exactly. Do not use the login scope or topic ID. Topic join does not submit challengeId.',
           code: `CHALLENGE=$(curl -s -X POST "${BASE_URL}/api/auth/challenge" \\
   -H "Authorization: Bearer $OPENSTOA_SESSION_TOKEN" -H "X-OpenStoa-API-Key: $OPENSTOA_API_KEY" -H "Content-Type: application/json")
-SCOPE=$(echo $CHALLENGE | jq -r '.scope')`,
+SCOPE=$(echo $CHALLENGE | jq -r '.scope')
+OPRF_DOMAIN=$(echo $CHALLENGE | jq -r '.oprfDomain')`,
         },
         {
           step: 2,
           title: 'Generate Proof',
-          description: 'Configure ATTESTATION_KEY locally for the wallet that holds the Coinbase EAS attestation, then select coinbase_kyc. This is not a browser-login command. The --silent flag outputs only JSON. External prover availability and payment terms must be checked before use; app mode is also supported.',
-          code: `PROOF_RESULT=$(zkproofport-prove coinbase_kyc --scope "$SCOPE" --silent)`,
+          description: 'Configure ATTESTATION_KEY locally for the wallet that holds the Coinbase EAS attestation, then select coinbase_kyc. Pass the challenge scope as --scope and its oprfDomain as --oprf-domain: the nullifier is keyed by both, and a proof made for another domain is refused. This is not a browser-login command. The --silent flag outputs only JSON. External prover availability and payment terms must be checked before use; app mode is also supported.',
+          code: `PROOF_RESULT=$(zkproofport-prove coinbase_kyc --scope "$SCOPE" --oprf-domain "$OPRF_DOMAIN" --silent)`,
         },
         {
           step: 3,
@@ -255,16 +264,17 @@ curl --fail-with-body -sS -X POST "${BASE_URL}/api/topics/{topicId}/join" \\
         {
           step: 1,
           title: 'Get Challenge',
-          description: 'Use your login session and API key on the challenge request to get the account-bound topic scope. This does not log you in; topic join does not submit challengeId.',
+          description: 'Use your login session and API key on the challenge request to get the account-bound topic scope and the oprfDomain. This does not log you in; topic join does not submit challengeId.',
           code: `CHALLENGE=$(curl -s -X POST "${BASE_URL}/api/auth/challenge" \\
   -H "Authorization: Bearer $OPENSTOA_SESSION_TOKEN" -H "X-OpenStoa-API-Key: $OPENSTOA_API_KEY" -H "Content-Type: application/json")
-SCOPE=$(echo $CHALLENGE | jq -r '.scope')`,
+SCOPE=$(echo $CHALLENGE | jq -r '.scope')
+OPRF_DOMAIN=$(echo $CHALLENGE | jq -r '.oprfDomain')`,
         },
         {
           step: 2,
           title: 'Generate Country Proof',
-          description: 'Configure ATTESTATION_KEY locally for the EAS-attested wallet. Set COUNTRIES to the exact comma-separated allowedCountries returned by the topic, such as KR,US. The join API uses inclusion proofs (--included true). External prover availability and payment terms must be checked before use; app mode is also supported.',
-          code: `PROOF_RESULT=$(zkproofport-prove coinbase_country --countries "$COUNTRIES" --included true --scope "$SCOPE" --silent)`,
+          description: 'Configure ATTESTATION_KEY locally for the EAS-attested wallet. Set COUNTRIES to the exact comma-separated allowedCountries returned by the topic, such as KR,US. The join API uses inclusion proofs (--included true). Pass the challenge oprfDomain as --oprf-domain; a proof made for another domain is refused. External prover availability and payment terms must be checked before use; app mode is also supported.',
+          code: `PROOF_RESULT=$(zkproofport-prove coinbase_country --countries "$COUNTRIES" --included true --scope "$SCOPE" --oprf-domain "$OPRF_DOMAIN" --silent)`,
         },
         {
           step: 3,
@@ -536,6 +546,9 @@ export function buildProofRequirement(
     circuit: guide.circuit,
     domain: options?.domain ?? null,
     allowedCountries: options?.allowedCountries ?? null,
+    // The OPRF domain a wallet credential proof's nullifier is keyed by
+    // (`--oprf-domain` for the prover CLI); null for OIDC, which has none.
+    oprfDomain: isOprfCircuit(guide.circuit) ? oprfSettingsFor(process.env.APP_ENV).domain : null,
     mcp: guide.mcp,
     guide: {
       title: guide.title,

@@ -6,7 +6,8 @@ import {
   verifyProofFromRelay,
   extractNullifier,
   extractScope,
-  computeScopeHash,
+  expectedScopeField,
+  proofScopeMatches,
   normalizePublicInputs,
   COMMUNITY_SCOPE,
 } from '@/lib/proof';
@@ -99,7 +100,11 @@ const ROUTE = '/api/auth/poll/[requestId]';
  *                       description: Array of 0x-prefixed public input hex strings
  *                     scopeHash:
  *                       type: string
- *                       description: Scope hash extracted from the cryptographically verified public inputs.
+ *                       description: >-
+ *                         Scope value read from the cryptographically verified public inputs, as 0x + 64 hex.
+ *                         For oidc_domain_attestation it is keccak256(utf8(scope)); for coinbase_attestation and
+ *                         coinbase_country_attestation it is keccak256(utf8(scope)) mod p (the BN254 field modulus),
+ *                         so compare it as a number with that value, not with a raw keccak256.
  *                     circuit:
  *                       type: string
  *                       description: Circuit type that was proven
@@ -191,8 +196,8 @@ export async function GET(
     // Verify scope
     logger.info(ROUTE, 'Extracting scope', { requestId, circuit });
     const scope = extractScope(result.publicInputs, circuit);
-    const expectedScope = computeScopeHash(COMMUNITY_SCOPE);
-    if (scope !== expectedScope) {
+    const expectedScope = expectedScopeField(COMMUNITY_SCOPE, circuit);
+    if (!proofScopeMatches(result.publicInputs, circuit, COMMUNITY_SCOPE)) {
       logger.warn(ROUTE, 'Scope mismatch', { requestId, scope, expectedScope, circuit });
       return NextResponse.json(
         { error: 'Scope mismatch' },

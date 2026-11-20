@@ -1,6 +1,6 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 import {NextRequest} from 'next/server';
-import {coinbaseIssuerInputs,oidcIssuerInputs,proofField} from './fixtures/trusted-proof';
+import {coinbaseIssuerInputs,oidcIssuerInputs} from './fixtures/trusted-proof';
 const state=vi.hoisted(()=>({poll:vi.fn(),verify:vi.fn(),session:vi.fn(),keep:vi.fn()}));
 vi.mock('@/lib/oidcRequestContext',()=>({rememberBoundOidcProof:state.keep}));
 vi.mock('@/lib/relay',()=>({pollProofResult:state.poll,RelayRequestNotFoundError:class extends Error{}}));
@@ -10,10 +10,11 @@ vi.mock('@/lib/ensureUser',()=>({ensureUser:vi.fn()}));
 vi.mock('@/lib/session',()=>({createSession:state.session,setSessionCookie:vi.fn()}));
 vi.mock('@/lib/deviceTakeoverGate',()=>({checkDeviceTakeover:vi.fn()}));
 import {GET} from '@/app/api/auth/poll/[requestId]/route';
-import {computeScopeHash} from '@/lib/proof';
-const scopeHash=computeScopeHash('zkproofport-community:topic:alice');
+import {reduceOprfName} from '@zkproofport-app/core';
+// A Coinbase KYC proof publishes its scope as keccak256(scope) mod p.
+const scopeHash=reduceOprfName('zkproofport-community:topic:alice');
 const poll=()=>GET(new NextRequest('http://localhost/api/auth/poll/request?mode=proof&scopeHash=attacker'),{params:Promise.resolve({requestId:'request'})});
-beforeEach(()=>{vi.clearAllMocks();const inputs=coinbaseIssuerInputs();Buffer.from(scopeHash.slice(2),'hex').forEach((value,index)=>inputs[128+index]=proofField(value));state.poll.mockResolvedValue({status:'completed',circuit:'coinbase_attestation',proof:'0xab',publicInputs:inputs,scopeHash:'attacker'});state.verify.mockResolvedValue({valid:true});state.keep.mockReset().mockResolvedValue(undefined);});
+beforeEach(()=>{vi.clearAllMocks();const inputs=coinbaseIssuerInputs(undefined,{scope:'zkproofport-community:topic:alice'});state.poll.mockResolvedValue({status:'completed',circuit:'coinbase_attestation',proof:'0xab',publicInputs:inputs,scopeHash:'attacker'});state.verify.mockResolvedValue({valid:true});state.keep.mockReset().mockResolvedValue(undefined);});
 it('returns the committed scope from verified public inputs, ignoring relay/query claims',async()=>{const response=await poll();expect(response.status).toBe(200);expect((await response.json()).scopeHash).toBe(scopeHash);expect(state.verify).toHaveBeenCalledOnce();expect(state.session).not.toHaveBeenCalled();});
 it('never emits a scope receipt for an invalid proof',async()=>{state.verify.mockResolvedValue({valid:false});const response=await poll();expect(response.status).toBe(400);expect((await response.json()).scopeHash).toBeUndefined();});
 it('pending proofs have no verified scope metadata',async()=>{state.poll.mockResolvedValue({status:'pending'});expect(await (await poll()).json()).toEqual({status:'pending'});expect(state.verify).not.toHaveBeenCalled();});
@@ -29,4 +30,4 @@ it('a proof-only OIDC poll keeps the request the proof was verified against',asy
 it('a proof-only OIDC poll verified without a request is a server error, never a returned proof',async()=>{state.poll.mockResolvedValue(oidcResult());state.verify.mockResolvedValue({valid:true});const response=await poll();expect(response.status).toBe(500);expect((await response.json()).proof).toBeUndefined();expect(state.keep).not.toHaveBeenCalled();});
 it('a failed keep is a server error, never a returned proof',async()=>{state.poll.mockResolvedValue(oidcResult());state.verify.mockResolvedValue({valid:true,request:REQUEST});state.keep.mockRejectedValue(new Error('redis down'));const response=await poll();expect(response.status).toBe(500);expect((await response.json()).proof).toBeUndefined();});
 it('a non-OIDC proof-only poll keeps nothing',async()=>{expect((await poll()).status).toBe(200);expect(state.keep).not.toHaveBeenCalled();});
-it('proof mode hands back the result\'s signerVariant unchanged, and omits it when the result has none',async()=>{const inputs=coinbaseIssuerInputs();Buffer.from(scopeHash.slice(2),'hex').forEach((value,index)=>inputs[128+index]=proofField(value));state.poll.mockResolvedValue({status:'completed',circuit:'coinbase_attestation',proof:'0xab',publicInputs:inputs,signerVariant:'android_factory'});const withVariant=await (await poll()).json();expect(withVariant.signerVariant).toBe('android_factory');expect(state.verify.mock.calls[0][0].signerVariant).toBe('android_factory');state.poll.mockResolvedValue({status:'completed',circuit:'coinbase_attestation',proof:'0xab',publicInputs:inputs});const without=await (await poll()).json();expect('signerVariant' in without).toBe(false);});
+it('proof mode hands back the result\'s signerVariant unchanged, and omits it when the result has none',async()=>{const inputs=coinbaseIssuerInputs(undefined,{scope:'zkproofport-community:topic:alice'});state.poll.mockResolvedValue({status:'completed',circuit:'coinbase_attestation',proof:'0xab',publicInputs:inputs,signerVariant:'android_factory'});const withVariant=await (await poll()).json();expect(withVariant.signerVariant).toBe('android_factory');expect(state.verify.mock.calls[0][0].signerVariant).toBe('android_factory');state.poll.mockResolvedValue({status:'completed',circuit:'coinbase_attestation',proof:'0xab',publicInputs:inputs});const without=await (await poll()).json();expect('signerVariant' in without).toBe(false);});

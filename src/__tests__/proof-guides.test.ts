@@ -22,6 +22,16 @@ describe('PROOF_GUIDES', () => {
   it('uses the Coinbase circuit CLI arguments instead of Google login', () => {
     expect(PROOF_GUIDES.kyc.proofEndpoint.agent.proveCommand).toContain('coinbase_kyc');
     expect(PROOF_GUIDES.country.proofEndpoint.agent.proveCommand).toContain('coinbase_country --countries "$COUNTRIES" --included true');
+    // A wallet proof's nullifier is keyed by the OPRF domain the challenge returns.
+    for (const key of ['kyc', 'country']) {
+      expect(PROOF_GUIDES[key].proofEndpoint.agent.proveCommand).toContain('--oprf-domain $OPRF_DOMAIN');
+      const code = PROOF_GUIDES[key].steps.agent.map(step => step.code ?? '').join('\n');
+      expect(code).toContain(`OPRF_DOMAIN=$(echo $CHALLENGE | jq -r '.oprfDomain')`);
+      expect(code).toContain('--oprf-domain "$OPRF_DOMAIN"');
+    }
+    for (const key of ['google_workspace', 'microsoft_365', 'workspace']) {
+      expect(JSON.stringify(PROOF_GUIDES[key])).not.toContain('--oprf-domain');
+    }
     for (const key of ['kyc', 'country']) {
       const guide = PROOF_GUIDES[key];
       expect(JSON.stringify(guide)).not.toContain('--login-google');
@@ -107,18 +117,21 @@ describe('buildProofRequirement', () => {
   });
 
   it('returns correct structure for "kyc"', () => {
+    process.env.APP_ENV = 'staging';
     const result = buildProofRequirement('kyc');
     expect(result).not.toBeNull();
     expect(result!.type).toBe('kyc');
     expect(result!.circuit).toBe('coinbase_attestation');
     expect(result!.domain).toBeNull();
     expect(result!.allowedCountries).toBeNull();
+    expect(result!.oprfDomain).toBe('stg-community.zkproofport.app');
     expect(result!.guide.title).toBeTruthy();
     expect(result!.guideUrl).toBe('/api/docs/proof-guide/kyc');
     expect(result!.proofEndpoint).toBeDefined();
   });
 
   it('guideUrl uses the correct format for each proof type', () => {
+    process.env.APP_ENV = 'staging';
     for (const key of REQUIRED_KEYS) {
       const result = buildProofRequirement(key);
       expect(result!.guideUrl).toBe(`/api/docs/proof-guide/${key}`);
@@ -126,6 +139,7 @@ describe('buildProofRequirement', () => {
   });
 
   it('adds countryList and isIncluded=true to mobile body for "country" with allowedCountries', () => {
+    process.env.APP_ENV = 'staging';
     const countries = ['US', 'KR', 'JP'];
     const result = buildProofRequirement('country', { allowedCountries: countries });
     expect(result!.proofEndpoint.mobile.body).toMatchObject({
@@ -139,6 +153,7 @@ describe('buildProofRequirement', () => {
   });
 
   it('does not add country params when allowedCountries is not provided', () => {
+    process.env.APP_ENV = 'staging';
     const result = buildProofRequirement('country');
     expect(result!.proofEndpoint.mobile.body).not.toHaveProperty('countryList');
     expect(result!.proofEndpoint.mobile.body).not.toHaveProperty('isIncluded');
@@ -164,8 +179,21 @@ describe('buildProofRequirement', () => {
     expect(result!.proofEndpoint.mobile.body).not.toHaveProperty('domain');
   });
 
+  it.each([['production', 'openstoa.xyz'], ['staging', 'stg-community.zkproofport.app'], ['development', 'localhost'], ['local', 'localhost']])(
+    'a %s kyc / country requirement names OPRF domain %s; an OIDC one names none', (env, domain) => {
+      process.env.APP_ENV = env;
+      expect(buildProofRequirement('kyc')!.oprfDomain).toBe(domain);
+      expect(buildProofRequirement('country', { allowedCountries: ['KR'] })!.oprfDomain).toBe(domain);
+      for (const key of ['google_workspace', 'microsoft_365', 'workspace']) expect(buildProofRequirement(key)!.oprfDomain).toBeNull();
+    });
+
+  it.each([undefined, '', 'Production', '__proto__'])('APP_ENV %j: a kyc requirement throws naming the known envs, never a filled-in domain', (env) => {
+    if (env === undefined) delete process.env.APP_ENV; else process.env.APP_ENV = env;
+    expect(() => buildProofRequirement('kyc')).toThrow(/Unknown APP_ENV .*Known: production, staging, development, local/);
+  });
+
   it('uses localhost:3200 as BASE_URL when APP_ENV is unset', () => {
-    const result = buildProofRequirement('kyc');
+    const result = buildProofRequirement('workspace');
     expect(result!.proofEndpoint.agent.challengeEndpoint.url).toBe(
       'http://localhost:3200/api/auth/challenge',
     );

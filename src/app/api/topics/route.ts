@@ -117,17 +117,19 @@ type TopicSort = typeof VALID_TOPIC_SORTS[number];
  *       gates and the circuit each needs (same matrix as `POST /api/topics/{topicId}/join`):
  *         - `none` (default) — no proof, anyone can join.
  *         - `country` (legacy: `requiresCountryProof=true`) — `coinbase_country_attestation`
- *           (Coinbase Country v2, 215 public inputs) over `allowedCountries`: 1 to 10 ISO 3166-1
+ *           (Coinbase Country v2, 155 public inputs) over `allowedCountries`: 1 to 10 ISO 3166-1
  *           alpha-2 codes, stored upper-cased without duplicates. The creator's proof must be an
  *           inclusion proof over exactly that list (as a set of codes), made within the last
  *           15 minutes.
- *         - `kyc` — `coinbase_attestation`.
+ *         - `kyc` — `coinbase_attestation` (Coinbase KYC v2, 133 public inputs).
  *         - `workspace` / `google_workspace` / `microsoft_365` — `oidc_domain_attestation` with the
  *           allowed domain configured separately on the topic.
  *
  *       The creator must satisfy the gate through matching valid account-bound cached verification
  *       or `{ proof, publicInputs }` for the required circuit. Without either, HTTP 402 includes
- *       `proofRequirement` and `proofScope` to start the app/AI proof workflow. Invalid submitted
+ *       `proofRequirement` and `proofScope` to start the app/AI proof workflow. A Coinbase proof is
+ *       generated with `--scope` = `proofScope` and `--oprf-domain` = `proofRequirement.oprfDomain`
+ *       (the same value an authenticated `POST /api/auth/challenge` returns). Invalid submitted
  *       proofs return 400; predicate/permission failures may return 403. Topic thumbnail `image` should be uploaded
  *       through `POST /api/upload` first; pass the returned `publicUrl` here.
  *     operationId: createTopic

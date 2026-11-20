@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import {
-  COMMUNITY_SCOPE, computeScopeHash, extractScope, extractDomain, verifyTrustedTopicProof, PUBLIC_INPUT_COUNTS,
+  COMMUNITY_SCOPE, computeScopeHash, proofScopeMatches, extractDomain, verifyTrustedTopicProof, PUBLIC_INPUT_COUNTS,
 } from './proof';
 import {
   checkCountryListMatches, OIDC_DOMAIN_ATTESTATION_PUBLIC_INPUT_LAYOUT, type CountryCondition, type OidcRequestContext,
@@ -143,7 +143,9 @@ export async function requireTopicProof(
     } else {
       throw new Error('Invalid public inputs');
     }
-    if (extractScope(inputs, circuit) !== scopeHash) throw new Error('Proof scope mismatch');
+    // keccak256(scope) for OIDC, keccak256(scope) mod p for a wallet credential.
+    // A wallet credential's OPRF domain is checked by verifyTrustedTopicProof.
+    if (!proofScopeMatches(inputs, circuit, scope)) throw new Error('Proof scope mismatch');
 
     let verifiedDomain: string | undefined;
     let provider: number | undefined;

@@ -7,12 +7,14 @@
 import { spawn as nodeSpawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, COINBASE_COUNTRY_PUBLIC_INPUT_COUNT, OIDC_PUBLIC_INPUT_COUNT } from '@zkproofport-app/core';
+import { COINBASE_ATTESTATION_PUBLIC_INPUT_COUNT, COINBASE_COUNTRY_PUBLIC_INPUT_COUNT, OIDC_PUBLIC_INPUT_COUNT, oprfNameError } from '@zkproofport-app/core';
 
 export type AiTopicProofType = 'google_login' | 'kyc' | 'country' | 'google_workspace' | 'microsoft_365' | 'workspace';
 export interface AiTopicProofInput {
   proofType: AiTopicProofType;
   scope: string;
+  /** Coinbase KYC / Country only: the OPRF domain the server named (`proofRequirement.oprfDomain`). */
+  oprfDomain?: string;
   countries?: readonly string[];
   provider?: 'google' | 'microsoft';
   consent: true;
@@ -55,7 +57,7 @@ const MAX_STDOUT_BYTES = 256 * 1024;
 const MAX_STDERR_BYTES = 64 * 1024;
 const MAX_STDERR_LINE = 4096;
 // The public-input count of each circuit's current version, from core
-// (Coinbase KYC v2, Coinbase Country v2, OIDC v2). An older prover's output is
+// (Coinbase KYC v2 and Country v2 with the OPRF nullifier, OIDC v2). An older prover's output is
 // refused here rather than sent for the server to refuse.
 const INPUT_COUNTS: Record<AiTopicProofType, number> = {
   google_login: OIDC_PUBLIC_INPUT_COUNT,
@@ -86,6 +88,11 @@ function requestArgs(input: AiTopicProofInput, env: NodeJS.ProcessEnv): {args: s
     if (!env.ATTESTATION_KEY?.trim()) {
       throw new AiTopicProofError('missing_inputs', 'Configure ATTESTATION_KEY in the local CLI/MCP process environment for a Coinbase-attested wallet. Never send the key as a command or tool argument. Alternatively use the mobile-app proof flow.', ['ATTESTATION_KEY']);
     }
+    // The nullifier is keyed by the server's OPRF domain beside the scope;
+    // the prover never fills one in, and neither does this adapter.
+    if (oprfNameError(input.oprfDomain) !== null) {
+      throw new AiTopicProofError('invalid_request', 'A Coinbase proof needs the OPRF domain from the topic proof requirement (proofRequirement.oprfDomain). Start the topic action again.');
+    }
     args = ['coinbase_kyc'];
     if (input.proofType === 'country') {
       if (!Array.isArray(input.countries) || input.countries.length < 1 || input.countries.length > 10
@@ -94,6 +101,7 @@ function requestArgs(input: AiTopicProofInput, env: NodeJS.ProcessEnv): {args: s
       }
       args = ['coinbase_country', '--countries', [...new Set(input.countries.map(value => value.toUpperCase()))].join(','), '--included', 'true'];
     }
+    args = [...args, '--oprf-domain', input.oprfDomain as string];
   } else {
     const providers: Partial<Record<AiTopicProofType, 'google' | 'microsoft'>> = {
       google_workspace: 'google', microsoft_365: 'microsoft',

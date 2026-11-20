@@ -12,9 +12,11 @@ import { redis } from './redis';
  * records the scope of every OIDC relay request it creates, and a verifier
  * that cannot find the record refuses the proof (see `verifyProofFromRelay`).
  *
- * The same record holds a `coinbase_country_attestation` request's country
- * list and direction: the proof's list is a public input the prover chooses,
- * so its result is verified against the list OpenStoa asked for.
+ * The same record holds a wallet credential request's OPRF domain (Coinbase
+ * KYC / Country: core checks the proof's signal_hash, domain and scope against
+ * `{ scope, requestId, oprfDomain }`), and a `coinbase_country_attestation`
+ * request's country list and direction: the proof's list is a public input the
+ * prover chooses, so its result is verified against the list OpenStoa asked for.
  */
 const REQUEST_KEY = (requestId: string) => `community:relay-request:${requestId}`;
 const BOUND_PROOF_KEY = (proof: string) =>
@@ -27,6 +29,8 @@ export const RELAY_REQUEST_TTL_SECONDS = 30 * 60;
 export interface RelayRequestRecord {
   scope: string;
   circuit: string;
+  /** Wallet credential requests only: the OPRF domain the request named. */
+  oprfDomain?: string;
   /** Coinbase Country requests only: the list and direction asked for. */
   countryCondition?: CountryCondition;
 }
@@ -58,11 +62,17 @@ export async function relayRequestFor(requestId: string): Promise<RelayRequestRe
   if (typeof requestId !== 'string' || requestId === '') return null;
   const record = parseRecord(await redis.get(REQUEST_KEY(requestId)));
   if (!record || typeof record.scope !== 'string' || typeof record.circuit !== 'string') return null;
-  if (record.countryCondition === undefined) return { scope: record.scope, circuit: record.circuit };
+  const read: RelayRequestRecord = { scope: record.scope, circuit: record.circuit };
+  if (record.oprfDomain !== undefined) {
+    // A domain that is not a non-empty string is a corrupt record, not "no domain".
+    if (typeof record.oprfDomain !== 'string' || record.oprfDomain === '') return null;
+    read.oprfDomain = record.oprfDomain;
+  }
+  if (record.countryCondition === undefined) return read;
   // A condition that does not read back is a corrupt record, not "no condition".
   const countryCondition = parseCountryCondition(record.countryCondition);
   if (!countryCondition) return null;
-  return { scope: record.scope, circuit: record.circuit, countryCondition };
+  return { ...read, countryCondition };
 }
 
 /**
