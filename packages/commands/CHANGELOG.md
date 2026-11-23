@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.3.0](https://github.com/zkproofport/openstoa/compare/openstoa-commands-v0.2.2...openstoa-commands-v0.3.0) (2026-11-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **proof:** verify Coinbase KYC v2 and Android signer proofs (core 0.4.0-beta.1)
+
+### Features
+
+* AI prover mcp 0.5.0 and sdk 0.6.0, Node 22 ([102e312](https://github.com/zkproofport/openstoa/commit/102e312c8278fab28cccdc172e5da36a69565798))
+* **commands:** expect Coinbase Country v2 (215 public inputs) ([c2282f4](https://github.com/zkproofport/openstoa/commit/c2282f43b88db36d7bc9cdca17b0dcfa214136d4))
+* OPRF domain and nullifier with sdk 0.5.0-beta.13 and core 0.4.0-beta.9 ([b1bbc7d](https://github.com/zkproofport/openstoa/commit/b1bbc7d56db08b8bfeafc83c14d09bc552acc1db))
+* **proof:** verify Coinbase KYC v2 and Android signer proofs (core 0.4.0-beta.1) ([ce5df6e](https://github.com/zkproofport/openstoa/commit/ce5df6eedbf97ce81a07581acd39614713735472))
+* **proof:** verify OIDC v2 proofs against their relay request (core 0.3.0) ([c97c792](https://github.com/zkproofport/openstoa/commit/c97c792ab4bab85d2f05b0edc7218bd6a5eb1051))
+
+
+### Bug Fixes
+
+* **commands:** carry signerVariant with every CLI/MCP topic proof ([2e38ac5](https://github.com/zkproofport/openstoa/commit/2e38ac5fc2c0a6490075e918f23bb6ef12f1c97d))
+* **commands:** prove Coinbase KYC v2 with @zkproofport-ai/mcp 0.4.4 ([0902202](https://github.com/zkproofport/openstoa/commit/0902202f796f323276f10fd86da26c09f2d75c4c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @masselabs/openstoa bumped from ^0.2.2 to ^0.2.3
+
 ## [0.2.2](https://github.com/zkproofport/openstoa/compare/openstoa-commands-v0.2.1...openstoa-commands-v0.2.2) (2026-09-20)
 
 

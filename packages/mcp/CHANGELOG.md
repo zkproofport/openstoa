@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.3](https://github.com/zkproofport/openstoa/compare/openstoa-mcp-v0.2.2...openstoa-mcp-v0.2.3) (2026-11-23)
+
+
+### Features
+
+* AI prover mcp 0.5.0 and sdk 0.6.0, Node 22 ([102e312](https://github.com/zkproofport/openstoa/commit/102e312c8278fab28cccdc172e5da36a69565798))
+
+
+### Bug Fixes
+
+* **commands:** carry signerVariant with every CLI/MCP topic proof ([2e38ac5](https://github.com/zkproofport/openstoa/commit/2e38ac5fc2c0a6490075e918f23bb6ef12f1c97d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @masselabs/openstoa-commands bumped from ^0.2.2 to ^0.3.0
+  * devDependencies
+    * @masselabs/openstoa bumped from ^0.2.2 to ^0.2.3
+
 ## [0.2.2](https://github.com/zkproofport/openstoa/compare/openstoa-mcp-v0.2.1...openstoa-mcp-v0.2.2) (2026-09-20)
 
 
